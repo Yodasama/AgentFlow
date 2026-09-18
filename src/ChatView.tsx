@@ -8,6 +8,13 @@ import {
 } from "./api";
 import { type Workspace, getActiveWorkspace } from "./workspaces";
 import { WorkspaceModal } from "./WorkspaceModal";
+import {
+  type AgentProviderConfig,
+  getActiveProvider,
+  getStoredProviders,
+  detectLocalEndpoints,
+} from "./agentAdapter";
+import { ProviderModal } from "./ProviderModal";
 
 interface Props {
   onNavigateToRun: (runId: string) => void;
@@ -65,13 +72,17 @@ export function ChatView({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("Claude 3.5 Sonnet");
   const [selectedReasoning, setSelectedReasoning] = useState("深度 (High)");
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Active Workspace Management
+  // Active Workspace
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace>(() => getActiveWorkspace());
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
+
+  // Active Provider & Model (Local vs Cloud API via Unified Adapter)
+  const [activeProvider, setActiveProvider] = useState<AgentProviderConfig>(() => getActiveProvider());
+  const [selectedModel, setSelectedModel] = useState(activeProvider.models[0] || "Claude 3.5 Sonnet");
+  const [showProviderModal, setShowProviderModal] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -83,6 +94,25 @@ export function ChatView({
   useEffect(() => {
     scrollToBottom();
   }, [messages, busy]);
+
+  // Run initial auto-detection of local services in background
+  useEffect(() => {
+    void detectLocalEndpoints().then(() => {
+      const current = getActiveProvider();
+      setActiveProvider(current);
+      if (!current.models.includes(selectedModel) && current.models.length > 0) {
+        setSelectedModel(current.models[0]);
+      }
+    });
+  }, []);
+
+  // Update selected model when provider changes
+  const handleSelectProvider = (p: AgentProviderConfig) => {
+    setActiveProvider(p);
+    if (p.models.length > 0 && !p.models.includes(selectedModel)) {
+      setSelectedModel(p.models[0]);
+    }
+  };
 
   // Handle Grill-Me handover from Planning View
   useEffect(() => {
@@ -106,7 +136,7 @@ export function ChatView({
       const assistantMsg: ChatMessage = {
         id: `msg-ai-${Date.now()}`,
         sender: "assistant",
-        content: `已锁定目标工作区【${activeWorkspace.name}】！针对【${topicTitle}】，在为您生成具体实施里程碑前，作为系统架构师我需要先与您确认 3 个关键技术决策：`,
+        content: `已锁定目标工作区【${activeWorkspace.name}】（接入源：${activeProvider.name} · ${selectedModel}）！针对【${topicTitle}】，在为您生成具体实施里程碑前，作为系统架构师我需要先与您确认 3 个关键技术决策：`,
         grillMe: {
           topic: topicTitle,
           questions: [
@@ -218,7 +248,7 @@ export function ChatView({
         const aiMsg: ChatMessage = {
           id: `msg-ai-${Date.now()}`,
           sender: "assistant",
-          content: `已为您配置定时任务规则，执行环境已锁定为【${activeWorkspace.name}】工作区：`,
+          content: `已为您配置定时任务规则，执行环境已锁定为【${activeWorkspace.name}】工作区（接入模型：${selectedModel}）：`,
           schedule: schedCard,
         };
 
@@ -258,7 +288,7 @@ export function ChatView({
       const aiMsg: ChatMessage = {
         id: `msg-ai-${Date.now()}`,
         sender: "assistant",
-        content: `已完成需求梳理与阶段设计！该方案将针对工作区【${activeWorkspace.name}】执行。您可以直接在下方派发任务，或沉淀为长期立项规划。`,
+        content: `已完成需求梳理与阶段设计！该方案将针对工作区【${activeWorkspace.name}】由【${selectedModel}】执行。您可以直接在下方派发任务，或沉淀为长期立项规划。`,
         plan,
       };
 
@@ -314,7 +344,7 @@ export function ChatView({
       const created = await createMockDevelopmentTask(
         {
           title: `[对话派发] ${phaseTitle}`,
-          description: `所属规划：${planTitle}\n工作区：${activeWorkspace.name} (${activeWorkspace.path})\n阶段目标：${phaseDesc}`,
+          description: `所属规划：${planTitle}\n工作区：${activeWorkspace.name} (${activeWorkspace.path})\n模型：${selectedModel}\n阶段目标：${phaseDesc}`,
           acceptanceCriteria: [
             `完成【${phaseTitle}】的代码落地`,
             "运行单元与集成测试确保无回归",
@@ -369,14 +399,27 @@ export function ChatView({
 
   return (
     <div className="gpt-chat-root">
-      {/* Top Floating Header with Model & Workspace Switcher */}
+      {/* Top Header Bar */}
       <div className="gpt-header-bar">
         <div className="gpt-header-left">
           <span className="gpt-logo-icon">✦</span>
-          <span className="gpt-header-title">AgentFlow Codex</span>
+          <span className="gpt-header-title">AgentFlow 智能中枢</span>
         </div>
 
         <div className="gpt-header-right">
+          {/* Provider / Adapter Pill */}
+          <button
+            type="button"
+            className="gpt-workspace-pill"
+            onClick={() => setShowProviderModal(true)}
+            title="管理本地与云端模型接入源"
+          >
+            <span>{activeProvider.isLocal ? "💻" : "☁️"}</span>
+            <span className="ws-label">接入源:</span>
+            <strong className="ws-name">{activeProvider.name.split(" ")[0]}</strong>
+            <span className="ws-chevron">⚙️</span>
+          </button>
+
           {/* Workspace Pill Button */}
           <button
             type="button"
@@ -402,12 +445,12 @@ export function ChatView({
       <div className="gpt-scroll-container">
         <div className="gpt-content-col">
           {messages.length === 0 ? (
-            /* OpenAI ChatGPT / Codex Empty State */
+            /* Elegant Empty State */
             <div className="gpt-empty-hero">
               <div className="gpt-hero-icon">✦</div>
               <h2 className="gpt-hero-title">今天想推演或构建什么？</h2>
               <p className="gpt-hero-desc">
-                当前聚焦工作区：<strong>{activeWorkspace.name}</strong>（{activeWorkspace.path}）
+                当前工作区：<strong>{activeWorkspace.name}</strong> · 接入源：<strong>{activeProvider.name}</strong>
               </p>
 
               <div className="gpt-prompt-grid">
@@ -595,7 +638,7 @@ export function ChatView({
                   <div className="gpt-assistant-avatar">✦</div>
                   <div className="gpt-message-body">
                     <div className="gpt-thinking-shimmer">
-                      <span>AgentFlow Codex 正在深度思考…</span>
+                      <span>AgentFlow 正在深度思考…</span>
                     </div>
                   </div>
                 </div>
@@ -607,42 +650,64 @@ export function ChatView({
         </div>
       </div>
 
-      {/* Floating Bottom Input Dock (ChatGPT Style) */}
+      {/* Floating Bottom Input Dock with Sleek Aesthetic Selector Bar */}
       <div className="gpt-bottom-dock-wrapper">
         <div className="gpt-floating-box">
-          {/* Top Options Row inside Input Box */}
+          {/* Aesthetic Options Pill Bar */}
           <div className="gpt-dock-meta">
+            {/* Workspace Pill */}
             <button
               type="button"
               className="gpt-meta-pill"
               onClick={() => setShowWorkspaceModal(true)}
-              title="切换工作区"
+              title="切换工作区目录"
             >
               <span>📁</span>
-              <span>{activeWorkspace.name}</span>
-              <span style={{ fontSize: "10px", color: "#86868b" }}>▾</span>
+              <span style={{ fontWeight: 500 }}>{activeWorkspace.name}</span>
+              <span className="pill-arrow">▾</span>
             </button>
 
-            <select
-              className="gpt-meta-select"
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
+            {/* Provider Pill */}
+            <button
+              type="button"
+              className="gpt-meta-pill"
+              onClick={() => setShowProviderModal(true)}
+              title="配置模型接入源 (本地检测 / 云端 API)"
             >
-              <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet</option>
-              <option value="GPT-4o">GPT-4o</option>
-              <option value="Gemini 1.5 Pro">Gemini 1.5 Pro</option>
-              <option value="DeepSeek V3">DeepSeek V3</option>
-            </select>
+              <span>{activeProvider.isLocal ? (activeProvider.detected ? "🟢" : "💻") : "☁️"}</span>
+              <span>{activeProvider.name.split(" ")[0]}</span>
+              <span className="pill-arrow">⚙️</span>
+            </button>
 
-            <select
-              className="gpt-meta-select"
-              value={selectedReasoning}
-              onChange={(e) => setSelectedReasoning(e.target.value)}
-            >
-              <option value="快速 (Low)">快速 (Low)</option>
-              <option value="平衡 (Medium)">平衡 (Medium)</option>
-              <option value="深度 (High)">深度 (High)</option>
-            </select>
+            {/* Model Pill */}
+            <div className="gpt-meta-select-wrapper">
+              <span className="select-icon">🤖</span>
+              <select
+                className="gpt-meta-select-clean"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+              >
+                {activeProvider.models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Reasoning Level Pill */}
+            <div className="gpt-meta-select-wrapper">
+              <span className="select-icon">🧠</span>
+              <select
+                className="gpt-meta-select-clean"
+                value={selectedReasoning}
+                onChange={(e) => setSelectedReasoning(e.target.value)}
+              >
+                <option value="快速 (Low)">快速 (Low)</option>
+                <option value="平衡 (Medium)">平衡 (Medium)</option>
+                <option value="深度 (High)">深度 (High)</option>
+              </select>
+            </div>
           </div>
 
           {/* Textarea + Circular Send Button */}
@@ -656,7 +721,7 @@ export function ChatView({
             <textarea
               ref={textareaRef}
               className="gpt-textarea"
-              placeholder={`向 AgentFlow 发送指令、推演需求或在【${activeWorkspace.name}】中派发任务…`}
+              placeholder={`给 AgentFlow 发送指令、推演需求或在【${activeWorkspace.name}】中派发任务…`}
               rows={1}
               value={inputText}
               onChange={(e) => {
@@ -684,7 +749,7 @@ export function ChatView({
         </div>
 
         <div className="gpt-footer-disclaimer">
-          AgentFlow Codex 可能会产生工程建议，任务将在对应工作区的独立 Git 分支中隔离执行。
+          AgentFlow 可能会产生工程建议，任务将在对应工作区的独立 Git 分支中隔离执行。
         </div>
       </div>
 
@@ -694,6 +759,15 @@ export function ChatView({
           activeWorkspace={activeWorkspace}
           onSelectWorkspace={(ws) => setActiveWorkspace(ws)}
           onClose={() => setShowWorkspaceModal(false)}
+        />
+      )}
+
+      {/* Provider / Adapter Settings Modal */}
+      {showProviderModal && (
+        <ProviderModal
+          activeProvider={activeProvider}
+          onSelectProvider={handleSelectProvider}
+          onClose={() => setShowProviderModal(false)}
         />
       )}
     </div>
