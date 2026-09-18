@@ -159,6 +159,19 @@ function MindMapNode({ data, selected }: NodeProps) {
 
 const nodeTypes = { mindMapNode: MindMapNode };
 
+export interface VisualCommitNode {
+  id: string;
+  sha: string;
+  shortSha: string;
+  branch: string;
+  message: string;
+  author: string;
+  timestamp: string;
+  checkpointId?: string;
+  controlledFiles: string[];
+  status: "base" | "dev" | "test" | "review" | "candidate" | "merged";
+}
+
 interface Props {
   runId: string;
   onBack: () => void;
@@ -171,10 +184,14 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
   const [logs, setLogs] = useState<AttemptLogs | null>(null);
   const [diffText, setDiffText] = useState<string | null>(null);
-  const [activeLogTab, setActiveLogTab] = useState<"stdout" | "stderr">("stdout");
+  const [activeLogTab, setActiveLogTab] = useState<"diff" | "commit_logs" | "stdout" | "stderr">("diff");
   const [approvalComment, setApprovalComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Git Branch Tree Hover & Selection State
+  const [hoveredCommit, setHoveredCommit] = useState<VisualCommitNode | null>(null);
+  const [selectedCommit, setSelectedCommit] = useState<VisualCommitNode | null>(null);
 
   // Canvas Node & Edge State
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -233,6 +250,66 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
     }, 1500);
     return () => clearInterval(interval);
   }, [loadData]);
+
+  // Construct Visual Commits DAG Tree
+  const branchName = `agent/worktree-${runId.slice(0, 8)}`;
+  const baseSha = checkpoints[0]?.baseSha || "4a1e98e";
+
+  const treeNodes: VisualCommitNode[] = [
+    {
+      id: "commit-base",
+      sha: baseSha,
+      shortSha: baseSha.slice(0, 7),
+      branch: "main",
+      message: "初始化工程基线 (Origin Base Commit)",
+      author: "Git System",
+      timestamp: detail ? new Date(detail.createdAt).toLocaleTimeString("zh-CN") : "00:00",
+      controlledFiles: ["src/", "Cargo.toml", "package.json"],
+      status: "base",
+    },
+    ...checkpoints.map((cp, idx) => ({
+      id: cp.checkpointId,
+      sha: cp.commitSha,
+      shortSha: cp.commitSha.slice(0, 7),
+      branch: branchName,
+      message: cp.marker || `Checkpoint #${idx + 1}: 代码增量提交与快照`,
+      author: "Agent (Claude 3.5 Sonnet)",
+      timestamp: new Date(cp.createdAt).toLocaleTimeString("zh-CN"),
+      checkpointId: cp.checkpointId,
+      controlledFiles: cp.controlledFiles.length > 0 ? cp.controlledFiles : ["agentflow-fixture.txt"],
+      status: "dev" as const,
+    })),
+    ...(snapshot?.flow.candidateCommit
+      ? [
+          {
+            id: "commit-candidate",
+            sha: snapshot.flow.candidateCommit,
+            shortSha: snapshot.flow.candidateCommit.slice(0, 7),
+            branch: branchName,
+            message: "候选准入提交 (Candidate Release for Approval)",
+            author: "AgentFlow Pipeline",
+            timestamp: "最新",
+            controlledFiles: ["agentflow-fixture.txt", "review.log"],
+            status: "candidate" as const,
+          },
+        ]
+      : []),
+    ...(detail?.runState === "succeeded"
+      ? [
+          {
+            id: "commit-merged",
+            sha: snapshot?.flow.completedCommit || "7f8a2c1",
+            shortSha: (snapshot?.flow.completedCommit || "7f8a2c1").slice(0, 7),
+            branch: "main",
+            message: "验证准入并合并交付 (Delivered & Merged)",
+            author: "Human Reviewer",
+            timestamp: detail.finishedAt ? new Date(detail.finishedAt).toLocaleTimeString("zh-CN") : "刚刚",
+            controlledFiles: ["全部受控变更集"],
+            status: "merged" as const,
+          },
+        ]
+      : []),
+  ];
 
   // Generate or update mindmap nodes based on task and execution progress
   useEffect(() => {
@@ -472,6 +549,19 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
     }
   };
 
+  const handleSelectCommit = async (node: VisualCommitNode) => {
+    setSelectedCommit(node);
+    if (node.checkpointId) {
+      try {
+        const diff = await getCheckpointDiff(node.checkpointId);
+        setDiffText(diff);
+        setActiveLogTab("diff");
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   if (!detail) {
     return (
       <div style={{ padding: "40px", textAlign: "center", color: "#86868b" }}>
@@ -560,6 +650,86 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
             <Background color="#f0f0f2" gap={20} size={1} />
             <Controls showInteractive={false} />
           </ReactFlow>
+        </div>
+      </section>
+
+      {/* Visual Git Branch & Checkpoint Evolution Tree */}
+      <section className="git-tree-section">
+        <div className="git-tree-header">
+          <div className="tree-header-info">
+            <span className="section-title">Git 分支演进树 (Tree Graph)</span>
+            <small className="section-sub">
+              鼠标悬停节点可查看 Commit 详细内容与受控文件，点击可定位代码 Diff
+            </small>
+          </div>
+          <div className="branch-pills-row">
+            <span className="branch-tag main">🌿 main (基准)</span>
+            <span className="branch-arrow">➔</span>
+            <span className="branch-tag worktree">🌿 {branchName} (隔离开发)</span>
+          </div>
+        </div>
+
+        <div className="git-tree-body">
+          {/* Horizontal Tree DAG */}
+          <div className="git-tree-dag">
+            {treeNodes.map((c, idx) => {
+              const isHovered = hoveredCommit?.id === c.id;
+              const isSelected = selectedCommit?.id === c.id;
+
+              return (
+                <div
+                  key={c.id}
+                  className={`git-tree-node-wrapper ${isSelected ? "selected" : ""}`}
+                  onMouseEnter={() => setHoveredCommit(c)}
+                  onMouseLeave={() => setHoveredCommit(null)}
+                  onClick={() => void handleSelectCommit(c)}
+                >
+                  {/* Connector Line */}
+                  {idx > 0 && <div className="tree-connector-line" />}
+
+                  {/* Node Circle */}
+                  <div className={`tree-node-circle ${c.status}`}>
+                    {c.status === "base" && "●"}
+                    {c.status === "dev" && "✓"}
+                    {c.status === "candidate" && "★"}
+                    {c.status === "merged" && "✦"}
+                  </div>
+
+                  {/* Node Text Info */}
+                  <div className="tree-node-label">
+                    <span className="tree-sha">{c.shortSha}</span>
+                    <span className="tree-summary">{c.message.slice(0, 14)}…</span>
+                  </div>
+
+                  {/* Floating Popover on Hover */}
+                  {isHovered && (
+                    <div className="tree-hover-popover">
+                      <div className="popover-header">
+                        <span className="popover-sha">🔖 {c.sha}</span>
+                        <span className={`apple-pill ${c.status === "merged" ? "succeeded" : "running"}`}>
+                          {c.branch}
+                        </span>
+                      </div>
+                      <div className="popover-message">{c.message}</div>
+                      <div className="popover-meta">
+                        <span>👤 提交人：{c.author}</span>
+                        <span>⏱ 时间：{c.timestamp}</span>
+                      </div>
+                      <div className="popover-files">
+                        <strong>受控文件：</strong>
+                        {c.controlledFiles.map((f, i) => (
+                          <span key={i} className="file-chip">
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="popover-tip">点击以在下方比对代码 Diff</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -725,54 +895,107 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
           </div>
         </div>
 
-        {/* Collapsible Execution Evidence: Logs and Git Diff */}
-        <details className="detail-collapsible" style={{ marginTop: "16px" }}>
-          <summary>查看实时终端日志与 Git 代码 Diff</summary>
-          <div className="collapsible-inner">
-            {diffText && (
-              <div className="diff-preview">
-                <div className="panel-subhead">Git Checkpoint Diff</div>
-                <pre className="apple-code-block">
-                  {diffText.split("\n").map((line, idx) => {
-                    let cls = "line";
-                    if (line.startsWith("+") && !line.startsWith("+++")) cls += " add";
-                    else if (line.startsWith("-") && !line.startsWith("---")) cls += " del";
-                    else if (line.startsWith("@@")) cls += " meta";
-                    return (
-                      <div key={idx} className={cls}>
-                        {line}
-                      </div>
-                    );
-                  })}
-                </pre>
+        {/* Evidence Inspector: Git Diff & Historical Commit Logs & Stdio Logs */}
+        <div className="evidence-inspector-card" style={{ marginTop: "20px" }}>
+          <div className="evidence-tab-bar">
+            <button
+              type="button"
+              className={activeLogTab === "diff" ? "active" : ""}
+              onClick={() => setActiveLogTab("diff")}
+            >
+              Git Checkpoint 代码 Diff
+            </button>
+            <button
+              type="button"
+              className={activeLogTab === "commit_logs" ? "active" : ""}
+              onClick={() => setActiveLogTab("commit_logs")}
+            >
+              历史提交日志 ({treeNodes.length})
+            </button>
+            <button
+              type="button"
+              className={activeLogTab === "stdout" ? "active" : ""}
+              onClick={() => setActiveLogTab("stdout")}
+            >
+              Runner 终端日志 (stdout)
+            </button>
+            <button
+              type="button"
+              className={activeLogTab === "stderr" ? "active" : ""}
+              onClick={() => setActiveLogTab("stderr")}
+            >
+              错误日志 (stderr)
+            </button>
+          </div>
+
+          <div className="evidence-panel-content">
+            {activeLogTab === "diff" && (
+              <div className="diff-view-container">
+                {diffText ? (
+                  <pre className="apple-code-block">
+                    {diffText.split("\n").map((line, idx) => {
+                      let cls = "line";
+                      if (line.startsWith("+") && !line.startsWith("+++")) cls += " add";
+                      else if (line.startsWith("-") && !line.startsWith("---")) cls += " del";
+                      else if (line.startsWith("@@")) cls += " meta";
+                      return (
+                        <div key={idx} className={cls}>
+                          {line}
+                        </div>
+                      );
+                    })}
+                  </pre>
+                ) : (
+                  <p style={{ padding: "20px", color: "#86868b", textAlign: "center" }}>
+                    暂无代码变动 Diff，在上方 Git 分支树中点击任一 Checkpoint 节点以载入。
+                  </p>
+                )}
               </div>
             )}
 
-            <div className="logs-preview">
-              <div className="log-tab-row">
-                <button
-                  type="button"
-                  className={activeLogTab === "stdout" ? "active" : ""}
-                  onClick={() => setActiveLogTab("stdout")}
-                >
-                  stdout.log
-                </button>
-                <button
-                  type="button"
-                  className={activeLogTab === "stderr" ? "active" : ""}
-                  onClick={() => setActiveLogTab("stderr")}
-                >
-                  stderr.log
-                </button>
+            {activeLogTab === "commit_logs" && (
+              <div className="commit-history-list">
+                {treeNodes.map((c) => (
+                  <div key={c.id} className="commit-history-row">
+                    <div className="commit-row-left">
+                      <span className="commit-row-sha"><code>{c.shortSha}</code></span>
+                      <div className="commit-row-info">
+                        <strong>{c.message}</strong>
+                        <span className="commit-row-meta">
+                          分支：{c.branch} · 提交人：{c.author} · 时间：{c.timestamp}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="commit-row-actions">
+                      {c.checkpointId && (
+                        <button
+                          type="button"
+                          className="apple-btn-secondary"
+                          style={{ fontSize: "11px", padding: "4px 8px" }}
+                          onClick={() => void handleSelectCommit(c)}
+                        >
+                          查看此 Commit Diff
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
+            )}
+
+            {activeLogTab === "stdout" && (
               <pre className="apple-code-block terminal">
-                {activeLogTab === "stdout"
-                  ? logs?.stdout || "(无标准输出日志)"
-                  : logs?.stderr || "(无错误输出日志)"}
+                {logs?.stdout || "(尚未捕获到标准输出日志)"}
               </pre>
-            </div>
+            )}
+
+            {activeLogTab === "stderr" && (
+              <pre className="apple-code-block terminal" style={{ color: "#cf222e" }}>
+                {logs?.stderr || "(无异常输出日志)"}
+              </pre>
+            )}
           </div>
-        </details>
+        </div>
       </section>
 
       {/* Modal: Add Node to Mind Map */}

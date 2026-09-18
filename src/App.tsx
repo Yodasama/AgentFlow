@@ -7,9 +7,9 @@ import { TasksListView } from "./TasksListView";
 import { TaskDetailView } from "./TaskDetailView";
 import { AgentManagerView } from "./AgentManagerView";
 import { SchedulesView } from "./SchedulesView";
-import { GoalsView } from "./GoalsView";
+import { PlanningView } from "./PlanningView";
 
-const navigation = ["任务", "Agent", "定时任务", "长期目标"];
+const navigation = ["任务", "Agent", "定时任务", "项目规划"];
 
 export function App() {
   const [activeTab, setActiveTab] = useState<string>("任务");
@@ -59,12 +59,13 @@ export function App() {
     <div className="shell">
       {/* Apple-Style Minimalist Sidebar */}
       <aside className="sidebar">
+        {/* Artistic Typographic Brand Header without square avatar */}
         <div className="brand">
-          <span className="brand-mark">AF</span>
-          <div>
-            <strong>AgentFlow</strong>
-            <small>本地智能工作台</small>
+          <div className="brand-typography">
+            <span className="brand-title">AgentFlow</span>
+            <span className="brand-badge">STUDIO</span>
           </div>
+          <p className="brand-sub">本地智能工程运行时</p>
         </div>
 
         <nav aria-label="主导航">
@@ -78,7 +79,7 @@ export function App() {
               {item === "任务" && <span className="nav-icon">📋</span>}
               {item === "Agent" && <span className="nav-icon">🤖</span>}
               {item === "定时任务" && <span className="nav-icon">⏰</span>}
-              {item === "长期目标" && <span className="nav-icon">🎯</span>}
+              {item === "项目规划" && <span className="nav-icon">🧭</span>}
               <span>{item}</span>
             </button>
           ))}
@@ -120,7 +121,12 @@ export function App() {
               />
             )}
 
-            {activeTab === "长期目标" && <GoalsView />}
+            {activeTab === "项目规划" && (
+              <PlanningView
+                onNavigateToRun={handleSelectRun}
+                onRefreshRuns={refreshRuns}
+              />
+            )}
           </>
         )}
       </main>

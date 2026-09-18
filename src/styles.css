@@ -48,7 +48,7 @@ button, input, select, textarea {
 /* App Shell */
 .shell {
   display: grid;
-  grid-template-columns: 210px 1fr;
+  grid-template-columns: 216px 1fr;
   min-height: 100vh;
 }
 
@@ -56,42 +56,44 @@ button, input, select, textarea {
 .sidebar {
   background: var(--apple-card);
   border-right: 1px solid var(--apple-border);
-  padding: 24px 14px;
+  padding: 26px 14px;
   display: flex;
   flex-direction: column;
 }
 
+/* Typographic Artistic Brand Header */
 .brand {
+  padding: 0 8px 26px;
+}
+
+.brand-typography {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 8px 24px;
+  align-items: baseline;
+  gap: 7px;
 }
 
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--apple-text-primary);
-  color: #ffffff;
-  font-size: 12px;
+.brand-title {
+  font-size: 17px;
   font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.brand strong {
-  display: block;
-  font-size: 14px;
-  font-weight: 600;
+  letter-spacing: -0.03em;
   color: var(--apple-text-primary);
 }
 
-.brand small {
-  display: block;
+.brand-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #ffffff;
+  background: var(--apple-text-primary);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+.brand-sub {
   font-size: 11px;
   color: var(--apple-text-secondary);
+  margin-top: 3px;
+  letter-spacing: 0.02em;
 }
 
 nav {
@@ -187,7 +189,7 @@ h1 {
   color: var(--apple-text-primary);
   border: 1px solid var(--apple-border);
   border-radius: var(--apple-radius-sm);
-  padding: 8px 14px;
+  padding: 7px 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -209,7 +211,8 @@ h1 {
   color: var(--apple-red);
   border: 1px solid rgba(224, 62, 26, 0.25);
   border-radius: var(--apple-radius-sm);
-  padding: 7px 12px;
+  padding: 6px 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -217,6 +220,21 @@ h1 {
 
 .apple-btn-danger:hover {
   background: var(--apple-red-bg);
+}
+
+.apple-icon-btn {
+  border: 0;
+  background: transparent;
+  color: var(--apple-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.apple-icon-btn:hover {
+  background: var(--apple-bg);
+  color: var(--apple-text-primary);
 }
 
 /* Apple Input & Search */
@@ -235,7 +253,7 @@ h1 {
   border-color: var(--apple-blue);
 }
 
-/* Tasks Table Card (Top-to-Bottom, Left-to-Right: 创建时间，任务名称，任务简介，当前状态) */
+/* Tasks Table Card */
 .apple-table-card {
   background: var(--apple-card);
   border: 1px solid var(--apple-border);
@@ -348,7 +366,7 @@ h1 {
 }
 
 /* ==============================================
-   Task Detail Page (Canvas Upper + Breakdown Lower)
+   Task Detail Page
    ============================================== */
 .task-detail-page {
   display: flex;
@@ -414,7 +432,6 @@ h1 {
   color: var(--apple-text-secondary);
 }
 
-/* Canvas must be white background referencing mindmap style */
 .mindmap-canvas-wrapper {
   width: 100%;
   height: 380px;
@@ -422,7 +439,229 @@ h1 {
   position: relative;
 }
 
-/* Execution Status Breakdown: Lower Half */
+/* ==============================================
+   Git Branch & Checkpoint Tree Section
+   ============================================== */
+.git-tree-section {
+  background: #ffffff;
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius);
+  padding: 18px 22px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.git-tree-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.tree-header-info .section-title {
+  font-size: 14px;
+  font-weight: 600;
+  display: block;
+}
+
+.tree-header-info .section-sub {
+  font-size: 12px;
+  color: var(--apple-text-secondary);
+}
+
+.branch-pills-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.branch-tag {
+  font-size: 11px;
+  font-family: monospace;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.branch-tag.main {
+  background: #f0f0f4;
+  color: var(--apple-text-primary);
+}
+
+.branch-arrow {
+  color: var(--apple-text-secondary);
+  font-size: 11px;
+}
+
+.branch-tag.worktree {
+  background: var(--apple-blue-bg);
+  color: var(--apple-blue);
+  border: 1px solid rgba(0, 113, 227, 0.2);
+}
+
+.git-tree-body {
+  overflow-x: auto;
+  padding: 16px 8px 10px;
+}
+
+.git-tree-dag {
+  display: flex;
+  align-items: center;
+  min-width: 600px;
+}
+
+.git-tree-node-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.git-tree-node-wrapper.selected .tree-node-circle {
+  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.2);
+}
+
+.tree-connector-line {
+  position: absolute;
+  top: 17px;
+  right: 100%;
+  width: 48px;
+  height: 2px;
+  background: #d2d2d7;
+}
+
+.tree-node-circle {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  transition: transform 0.15s ease;
+  z-index: 2;
+}
+
+.tree-node-circle.base {
+  background: #e5e5ea;
+  color: #86868b;
+}
+
+.tree-node-circle.dev {
+  background: var(--apple-green-bg);
+  color: var(--apple-green);
+  border: 2px solid var(--apple-green);
+}
+
+.tree-node-circle.candidate {
+  background: var(--apple-blue-bg);
+  color: var(--apple-blue);
+  border: 2px solid var(--apple-blue);
+}
+
+.tree-node-circle.merged {
+  background: var(--apple-green);
+  color: #ffffff;
+}
+
+.git-tree-node-wrapper:hover .tree-node-circle {
+  transform: scale(1.15);
+}
+
+.tree-node-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.tree-sha {
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--apple-blue);
+}
+
+.tree-summary {
+  font-size: 10px;
+  color: var(--apple-text-secondary);
+  white-space: nowrap;
+}
+
+/* Floating Popover on Hover */
+.tree-hover-popover {
+  position: absolute;
+  bottom: 120%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ffffff;
+  border: 1px solid var(--apple-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-width: 260px;
+  max-width: 340px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.popover-sha {
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--apple-blue);
+}
+
+.popover-message {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--apple-text-primary);
+}
+
+.popover-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+}
+
+.popover-files {
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.file-chip {
+  background: #f5f5f7;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--apple-text-primary);
+}
+
+.popover-tip {
+  font-size: 10px;
+  color: var(--apple-blue);
+  border-top: 1px solid var(--apple-border-light);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+
+/* ==============================================
+   Execution Status Breakdown: Lower Half
+   ============================================== */
 .status-breakdown-section {
   background: var(--apple-card);
   border: 1px solid var(--apple-border);
@@ -561,60 +800,40 @@ h1 {
   margin-top: 4px;
 }
 
-/* Collapsible Section (Git Diff & Logs) */
-.detail-collapsible {
-  border-top: 1px solid var(--apple-border);
-  padding-top: 14px;
-}
-
-.detail-collapsible summary {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--apple-blue);
-  cursor: pointer;
-  outline: none;
-}
-
-.collapsible-inner {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-
-.diff-preview, .logs-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.panel-subhead {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--apple-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.log-tab-row {
-  display: flex;
-  gap: 6px;
-}
-
-.log-tab-row button {
+/* Evidence Inspector (Diff, Commit Logs, Stdout, Stderr) */
+.evidence-inspector-card {
   background: #ffffff;
   border: 1px solid var(--apple-border);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 11px;
-  color: var(--apple-text-secondary);
-  cursor: pointer;
+  border-radius: var(--apple-radius);
+  overflow: hidden;
 }
 
-.log-tab-row button.active {
-  background: var(--apple-text-primary);
-  color: #ffffff;
-  border-color: var(--apple-text-primary);
+.evidence-tab-bar {
+  display: flex;
+  background: var(--apple-card-subtle);
+  border-bottom: 1px solid var(--apple-border);
+}
+
+.evidence-tab-bar button {
+  padding: 10px 18px;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--apple-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.evidence-tab-bar button.active {
+  color: var(--apple-blue);
+  background: #ffffff;
+  font-weight: 600;
+  border-bottom: 2px solid var(--apple-blue);
+}
+
+.evidence-panel-content {
+  padding: 14px;
 }
 
 .apple-code-block {
@@ -625,7 +844,7 @@ h1 {
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: 11px;
   line-height: 1.5;
-  height: 200px;
+  height: 220px;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-all;
@@ -645,8 +864,50 @@ h1 {
   color: #0969da;
 }
 
+.commit-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.commit-history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--apple-border-light);
+  border-radius: 8px;
+  background: var(--apple-card-subtle);
+}
+
+.commit-row-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.commit-row-sha code {
+  font-family: monospace;
+  color: var(--apple-blue);
+  font-weight: 600;
+  background: var(--apple-blue-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.commit-row-info strong {
+  font-size: 13px;
+  display: block;
+  color: var(--apple-text-primary);
+}
+
+.commit-row-meta {
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+}
+
 /* ==============================================
-   Agent Manager View
+   Agent Studio Layout & Inspector
    ============================================== */
 .agent-manager-page {
   display: flex;
@@ -654,113 +915,286 @@ h1 {
   gap: 20px;
 }
 
-.agent-manager-grid {
+.agent-saved-pill {
+  font-size: 11px;
+  color: var(--apple-green);
+  background: var(--apple-green-bg);
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-weight: 600;
+}
+
+.agent-studio-layout {
   display: grid;
-  grid-template-columns: 310px 1fr;
+  grid-template-columns: 290px 1fr;
   gap: 20px;
 }
 
-.agent-list-panel {
-  background: var(--apple-card);
-  border: 1px solid var(--apple-border);
-  border-radius: var(--apple-radius);
-  padding: 14px;
+.agent-roster-column {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.agent-item-card {
-  padding: 14px;
-  border: 1.5px solid var(--apple-border);
-  border-radius: var(--apple-radius-sm);
+.roster-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--apple-text-secondary);
+  padding: 0 4px;
+}
+
+.roster-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agent-roster-card {
   background: #ffffff;
+  border: 1.5px solid var(--apple-border);
+  border-radius: var(--apple-radius);
+  padding: 14px;
   cursor: pointer;
   transition: all 0.15s ease;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+
+.agent-roster-card:hover {
+  border-color: #c7c7cc;
+}
+
+.agent-roster-card.active {
+  border-color: var(--apple-blue);
+  background: #fbfdff;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.08);
+}
+
+.roster-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.roster-avatar {
+  font-size: 24px;
+}
+
+.roster-info strong {
+  font-size: 13px;
+  display: block;
+}
+
+.roster-role-tag {
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+}
+
+.roster-card-meta {
+  display: flex;
   gap: 6px;
 }
 
-.agent-item-card:hover {
-  border-color: #c7c7cc;
-  background: var(--apple-card-subtle);
+.meta-chip {
+  font-size: 10px;
+  background: #f0f0f4;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--apple-text-secondary);
 }
 
-.agent-item-card.active {
-  border-color: var(--apple-blue);
-  background: #fbfdff;
+/* Inspector Column */
+.agent-inspector-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.agent-card-header {
+.inspector-card {
+  background: #ffffff;
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius);
+  padding: 20px;
+}
+
+.inspector-header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.agent-role-pill {
-  font-size: 11px;
+.agent-title-input {
+  font-size: 18px;
   font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 6px;
-  background: var(--apple-blue-bg);
-  color: var(--apple-blue);
+  border: 0;
+  border-bottom: 1px dashed #d2d2d7;
+  outline: none;
+  background: transparent;
+  color: var(--apple-text-primary);
+  width: 280px;
 }
 
-.agent-detail-panel {
-  background: var(--apple-card);
-  border: 1px solid var(--apple-border);
-  border-radius: var(--apple-radius);
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.agent-title-input:focus {
+  border-bottom-color: var(--apple-blue);
 }
 
-.agent-edit-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.card-section-title {
+  margin-bottom: 12px;
 }
 
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+.card-section-title span {
+  font-size: 13px;
+  font-weight: 600;
+  display: block;
 }
 
-.agent-edit-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
+.card-section-title small {
+  font-size: 11px;
   color: var(--apple-text-secondary);
 }
 
-.agent-edit-form select,
-.agent-edit-form input {
-  background: #ffffff;
-  border: 1px solid var(--apple-border);
-  border-radius: 8px;
-  padding: 9px 12px;
-  color: var(--apple-text-primary);
-  outline: none;
+.model-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
-.agent-edit-form select:focus,
-.agent-edit-form input:focus {
+.model-option-card {
+  border: 1.5px solid var(--apple-border);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.model-option-card:hover {
+  border-color: #c7c7cc;
+}
+
+.model-option-card.selected {
   border-color: var(--apple-blue);
+  background: var(--apple-blue-bg);
 }
 
-.agent-prompt-editor {
-  width: 100%;
-  height: 240px;
+.model-option-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.model-option-top strong {
+  font-size: 13px;
+}
+
+.provider-tag {
+  font-size: 10px;
+  color: var(--apple-text-secondary);
+}
+
+.model-badge {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+}
+
+/* Reasoning Intensity Segmented Control */
+.reasoning-segmented-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  background: #f0f0f4;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.reasoning-segment-btn {
+  border: 0;
+  background: transparent;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--apple-text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reasoning-segment-btn.active {
   background: #ffffff;
+  color: var(--apple-text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.reasoning-metric-box {
+  margin-top: 12px;
+  background: var(--apple-card-subtle);
+  border: 1px solid var(--apple-border-light);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.metric-col {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.metric-label {
+  color: var(--apple-text-secondary);
+}
+
+.metric-desc {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+  border-top: 1px solid var(--apple-border-light);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+
+/* Prompt Studio */
+.prompt-variable-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.var-label {
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+}
+
+.var-chip {
+  border: 1px solid var(--apple-border);
+  background: #ffffff;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--apple-blue);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.var-chip:hover {
+  background: var(--apple-blue-bg);
+}
+
+.apple-prompt-editor {
+  width: 100%;
   border: 1px solid var(--apple-border);
   border-radius: 8px;
   padding: 12px;
-  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-family: "SF Mono", Menlo, monospace;
   font-size: 12px;
   line-height: 1.5;
   resize: vertical;
@@ -768,12 +1202,226 @@ h1 {
   outline: none;
 }
 
-.agent-prompt-editor:focus {
+.apple-prompt-editor:focus {
   border-color: var(--apple-blue);
 }
 
+.prompt-footer-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+/* Capabilities Toggle */
+.capabilities-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cap-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--apple-card-subtle);
+  border: 1px solid var(--apple-border-light);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.cap-toggle-row strong {
+  font-size: 12px;
+  display: block;
+}
+
+.cap-toggle-row p {
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+}
+
+.cap-toggle-row input[type="checkbox"] {
+  accent-color: var(--apple-blue);
+  cursor: pointer;
+}
+
 /* ==============================================
-   Schedules View (4 Fields: 时间, 内容, 节点, 支持功能)
+   Planning View (项目规划)
+   ============================================== */
+.planning-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.planning-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.planning-card {
+  background: #ffffff;
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius);
+  padding: 22px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.planning-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.planning-card-desc {
+  font-size: 13px;
+  color: var(--apple-text-secondary);
+}
+
+.planning-progress-section {
+  margin: 14px 0;
+  background: var(--apple-card-subtle);
+  border: 1px solid var(--apple-border-light);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.planning-progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--apple-text-secondary);
+}
+
+.planning-progress-bar {
+  height: 6px;
+  background: #e5e5ea;
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.planning-progress-fill {
+  height: 100%;
+  background: var(--apple-blue);
+  border-radius: 99px;
+  transition: width 0.3s ease;
+}
+
+.milestones-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.milestones-heading {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--apple-text-secondary);
+}
+
+.milestones-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.milestone-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid var(--apple-border-light);
+  border-radius: 8px;
+  background: #ffffff;
+  transition: all 0.15s ease;
+}
+
+.milestone-row.completed {
+  background: #f9fcf9;
+  border-color: rgba(36, 161, 89, 0.25);
+}
+
+.milestone-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.milestone-left input[type="checkbox"] {
+  accent-color: var(--apple-blue);
+  cursor: pointer;
+}
+
+.milestone-text-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.milestone-title {
+  font-size: 13px;
+  color: var(--apple-text-primary);
+}
+
+.milestone-row.completed .milestone-title {
+  text-decoration: line-through;
+  color: var(--apple-text-secondary);
+}
+
+.dispatched-tag {
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+}
+
+.link-btn {
+  border: 0;
+  background: transparent;
+  color: var(--apple-blue);
+  font-family: monospace;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.milestone-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.completed-badge {
+  font-size: 11px;
+  color: var(--apple-green);
+  font-weight: 600;
+}
+
+.template-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 14px;
+}
+
+.template-chip {
+  border: 1px solid var(--apple-border);
+  background: #ffffff;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.template-chip:hover {
+  background: var(--apple-bg);
+}
+
+/* ==============================================
+   Schedules View (Error & Logs)
    ============================================== */
 .schedules-page {
   display: flex;
@@ -796,6 +1444,30 @@ h1 {
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: all 0.15s ease;
+}
+
+.schedule-row-card.clickable {
+  cursor: pointer;
+}
+
+.schedule-row-card.clickable:hover {
+  border-color: #c7c7cc;
+}
+
+.schedule-row-card.has-error {
+  border-color: rgba(224, 62, 26, 0.4);
+  background: #fffdfd;
+}
+
+.schedule-alert-badge {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--apple-red-bg);
+  color: var(--apple-red);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(224, 62, 26, 0.2);
 }
 
 .schedule-card-headline {
@@ -826,101 +1498,69 @@ h1 {
   color: var(--apple-text-secondary);
 }
 
+.schedule-error-preview {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--apple-red-bg);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--apple-red);
+}
+
 .schedule-card-controls {
   display: flex;
   gap: 10px;
   align-items: center;
 }
 
-/* ==============================================
-   Goals View
-   ============================================== */
-.goals-page {
+.schedule-detail-tab-row {
   display: flex;
-  flex-direction: column;
-  gap: 20px;
+  gap: 6px;
 }
 
-.goals-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 18px;
-}
-
-.goal-card {
-  background: var(--apple-card);
+.schedule-detail-tab-row button {
   border: 1px solid var(--apple-border);
-  border-radius: var(--apple-radius);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-
-.goal-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.goal-card-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--apple-text-primary);
-}
-
-.goal-progress-bar {
-  width: 100%;
-  height: 6px;
-  background: #f0f0f4;
-  border-radius: 99px;
-  overflow: hidden;
-}
-
-.goal-progress-fill {
-  height: 100%;
-  background: var(--apple-blue);
-  border-radius: 99px;
-  transition: width 0.3s ease;
-}
-
-.milestones-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.milestone-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--apple-text-secondary);
-}
-
-.milestone-item input[type="checkbox"] {
-  cursor: pointer;
-  accent-color: var(--apple-blue);
-}
-
-.milestone-item.done span {
-  text-decoration: line-through;
-  color: var(--apple-text-tertiary);
-}
-
-.goal-meta {
-  display: flex;
-  justify-content: space-between;
+  background: #ffffff;
+  padding: 4px 10px;
+  border-radius: 6px;
   font-size: 11px;
-  color: var(--apple-text-secondary);
-  border-top: 1px solid var(--apple-border-light);
-  padding-top: 10px;
+  cursor: pointer;
 }
 
-/* ==============================================
-   Apple Modal Dialogs & Alerts
-   ============================================== */
+.schedule-detail-tab-row button.active {
+  background: var(--apple-text-primary);
+  color: #ffffff;
+  border-color: var(--apple-text-primary);
+}
+
+.schedule-log-item {
+  border: 1px solid var(--apple-border-light);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--apple-card-subtle);
+}
+
+.schedule-log-item.failed {
+  border-color: rgba(224, 62, 26, 0.3);
+}
+
+.log-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.log-error-box {
+  background: var(--apple-red-bg);
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--apple-red);
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+/* Apple Modal Dialogs */
 .apple-modal-backdrop {
   position: fixed;
   inset: 0;
