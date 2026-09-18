@@ -237,22 +237,22 @@ export function AgentManagerView() {
           <div className="inspector-card compact-editor-card">
             {/* Header: Icon + Name + Desc + Delete */}
             <div className="inspector-header-row" style={{ paddingBottom: "12px", borderBottom: "1px solid #f0f0f2" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1 }}>
-                <span style={{ fontSize: "24px" }}>{selected.icon}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1 }}>
+                <span style={{ fontSize: "28px" }}>{selected.icon}</span>
                 <div style={{ flex: 1 }}>
                   <input
                     className="agent-title-input"
-                    style={{ fontSize: "16px", padding: "2px 0" }}
+                    style={{ fontSize: "18px", fontWeight: 600, padding: "2px 0" }}
                     value={selected.roleName}
                     onChange={(e) => updateSelectedRole({ roleName: e.target.value })}
                   />
                   <input
                     style={{
                       border: 0,
-                      fontSize: "12px",
+                      fontSize: "13px",
                       color: "#86868b",
-                      marginTop: "2px",
-                      width: "90%",
+                      marginTop: "3px",
+                      width: "95%",
                       outline: "none",
                       background: "transparent",
                     }}
@@ -267,7 +267,7 @@ export function AgentManagerView() {
                 <button
                   className="apple-btn-danger"
                   type="button"
-                  style={{ fontSize: "11px", padding: "4px 8px" }}
+                  style={{ fontSize: "12px", padding: "5px 10px" }}
                   onClick={() => handleDeleteRole(selected.id)}
                 >
                   删除角色
@@ -276,18 +276,19 @@ export function AgentManagerView() {
             </div>
 
             {/* Middle: Recommended Engine & Reasoning Level */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", margin: "12px 0" }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "11px", color: "#86868b", fontWeight: 500 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", margin: "14px 0" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "13px", color: "#1d1d1f", fontWeight: 500 }}>
                 推荐模型引擎 (画布添加节点时默认选用)
                 <select
                   value={selected.defaultModel}
                   onChange={(e) => updateSelectedRole({ defaultModel: e.target.value })}
                   style={{
-                    padding: "6px 10px",
-                    borderRadius: "6px",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
                     border: "1px solid #e5e5ea",
                     background: "#ffffff",
-                    fontSize: "12px",
+                    fontSize: "13px",
+                    color: "#1d1d1f",
                   }}
                 >
                   <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet (长上下文与架构)</option>
@@ -298,17 +299,18 @@ export function AgentManagerView() {
                 </select>
               </label>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "11px", color: "#86868b", fontWeight: 500 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "13px", color: "#1d1d1f", fontWeight: 500 }}>
                 推荐推理深度
                 <select
                   value={selected.defaultReasoning}
                   onChange={(e) => updateSelectedRole({ defaultReasoning: e.target.value })}
                   style={{
-                    padding: "6px 10px",
-                    borderRadius: "6px",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
                     border: "1px solid #e5e5ea",
                     background: "#ffffff",
-                    fontSize: "12px",
+                    fontSize: "13px",
+                    color: "#1d1d1f",
                   }}
                 >
                   <option value="快速">快速 (Low · 1~2 步快速响应)</option>
@@ -321,30 +323,30 @@ export function AgentManagerView() {
             </div>
 
             {/* Bottom: Role System Prompt Studio */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: "11px", fontWeight: 600, color: "#86868b" }}>
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#1d1d1f" }}>
                   角色专属预设 Prompt 指令
                 </span>
-                <span style={{ fontSize: "10px", color: "#86868b" }}>
+                <span style={{ fontSize: "12px", color: "#86868b" }}>
                   字符数：{selected.systemPrompt.length}
                 </span>
               </div>
 
               <textarea
                 className="apple-prompt-editor"
-                rows={8}
-                style={{ fontSize: "11.5px", padding: "10px", minHeight: "170px" }}
+                rows={9}
+                style={{ fontSize: "13px", lineHeight: "1.6", padding: "12px", minHeight: "190px" }}
                 value={selected.systemPrompt}
                 onChange={(e) => updateSelectedRole({ systemPrompt: e.target.value })}
                 placeholder="编写该功能角色的系统指令与原则…"
               />
 
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "2px" }}>
-                <span style={{ fontSize: "10px", color: "#86868b" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "3px" }}>
+                <span style={{ fontSize: "12px", color: "#86868b" }}>
                   提示：可在任务内随时针对具体执行目标进行微调。
                 </span>
-                <span style={{ fontSize: "10px", color: "#24a159" }}>
+                <span style={{ fontSize: "12px", color: "#24a159" }}>
                   ✓ 修改已自动同步
                 </span>
               </div>

@@ -61,11 +61,9 @@ export function App() {
       <aside className="sidebar">
         {/* Artistic Typographic Brand Header */}
         <div className="brand">
-          <div className="brand-typography">
-            <span className="brand-title">AgentFlow</span>
-            <span className="brand-badge">STUDIO</span>
+          <div className="brand-artistic">
+            Agent<em>Flow</em>
           </div>
-          <p className="brand-sub">本地智能工程运行时</p>
         </div>
 
         {/* Main Navigation: 任务, 项目规划, 定时任务 */}

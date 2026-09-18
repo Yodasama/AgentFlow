@@ -40,7 +40,7 @@ const agentNodeOptions = [
   { id: "agent-review", label: "严苛审查 Agent (Claude 3.5 Sonnet)" },
   { id: "agent-test", label: "自动化测试 Agent (Test Runner)" },
   { id: "agent-arch", label: "架构规划 Agent (GPT-4o)" },
-  { id: "agent-ops", label: "系统运维与巡检 Agent (Local Runner)" },
+  { id: "agent-ops", label: "系统运维与巡检 Agent (Local/SSH Runner)" },
 ];
 
 export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
@@ -51,30 +51,28 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
   // New Schedule Modal
   const [showAddModal, setShowAddModal] = useState(false);
 
-  // 1. Time Widget State (时间小组件手动点选)
-  const [frequency, setFrequency] = useState<"daily" | "hourly" | "workdays" | "weekly" | "custom">("daily");
+  // 1. Time Widget State (时间小组件手动点选，完全抛弃 Cron)
+  const [frequency, setFrequency] = useState<"daily" | "workdays" | "weekly" | "hourly">("daily");
   const [timePickerValue, setTimePickerValue] = useState("02:00");
   const [weekdayValue, setWeekdayValue] = useState("1"); // 1 = Monday
-  const [customCron, setCustomCron] = useState("0 2 * * *");
 
-  // 2. Task Description & Target Agent Node
+  // 2. Task Description & Assigned Agent Node
   const [taskDescription, setTaskDescription] = useState("");
   const [assignedAgent, setAssignedAgent] = useState(agentNodeOptions[2].label); // Default: 测试 Agent
 
-  // 3. Execution Target Environment (解决服务器信息与自然语言跑偏问题)
+  // 3. Execution Target Environment Context (解决服务器信息与自然语言跑偏的担忧)
   const [targetEnvType, setTargetEnvType] = useState<"local" | "remote">("local");
   const [remoteHost, setRemoteHost] = useState("");
   const [remotePort, setRemotePort] = useState(22);
   const [remoteUser, setRemoteUser] = useState("root");
-  const [remoteDir, setRemoteDir] = useState("/var/log");
+  const [remoteDir, setRemoteDir] = useState("/opt/app");
   const [authMethod, setAuthMethod] = useState("ssh_key");
-  const [preCommand, setPreCommand] = useState("");
 
   // Detail / Edit Modal
   const [selectedSchedule, setSelectedSchedule] = useState<ScheduleRecord | null>(null);
   const [detailTab, setDetailTab] = useState<"edit" | "logs">("edit");
   const [editName, setEditName] = useState("");
-  const [editCron, setEditCron] = useState("");
+  const [editTimeStr, setEditTimeStr] = useState("");
   const [editAgent, setEditAgent] = useState("");
 
   // Persisted Execution Logs & Server Context
@@ -109,23 +107,13 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
     void loadSchedules();
   }, [loadSchedules]);
 
-  // Compute Cron String and Human Summary from Time Widget
-  const computeScheduleSpec = () => {
-    const [hour, minute] = timePickerValue.split(":");
-    const h = parseInt(hour || "2", 10);
-    const m = parseInt(minute || "0", 10);
-
+  // Compute Human-readable Schedule Summary directly from Time Widget
+  const computeScheduleHumanSummary = () => {
     if (frequency === "daily") {
-      return {
-        cron: `${m} ${h} * * *`,
-        human: `每天 ${timePickerValue}`,
-      };
+      return `每天 ${timePickerValue}`;
     }
     if (frequency === "workdays") {
-      return {
-        cron: `${m} ${h} * * 1-5`,
-        human: `工作日(周一至五) ${timePickerValue}`,
-      };
+      return `工作日 (周一至周五) ${timePickerValue}`;
     }
     if (frequency === "weekly") {
       const dayNames: Record<string, string> = {
@@ -137,21 +125,9 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
         "6": "周六",
         "0": "周日",
       };
-      return {
-        cron: `${m} ${h} * * ${weekdayValue}`,
-        human: `每周${dayNames[weekdayValue] || "周一"} ${timePickerValue}`,
-      };
+      return `每周${dayNames[weekdayValue] || "周一"} ${timePickerValue}`;
     }
-    if (frequency === "hourly") {
-      return {
-        cron: `${m} * * * *`,
-        human: `每小时第 ${m} 分钟`,
-      };
-    }
-    return {
-      cron: customCron.trim(),
-      human: `自定义 (${customCron.trim()})`,
-    };
+    return "每小时整点";
   };
 
   const handleToggle = async (id: string, e?: React.MouseEvent) => {
@@ -191,12 +167,12 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
       const env = envConfigs[sched.id];
       const envSummary =
         env?.envType === "remote"
-          ? `[远端主机: ${env.remoteHost}:${env.remotePort} · 目录: ${env.remoteDir}]`
-          : "[本机隔离工作区]";
+          ? `[远端服务器: ${env.remoteHost}:${env.remotePort} · 路径: ${env.remoteDir}]`
+          : "[本机独立沙箱工作区]";
 
       const run = await createMockTask({
-        title: `[定时执行] ${sched.name}`,
-        description: `时间：${sched.cron} · 执行 Agent：${sched.targetWorkflowName}\n环境：${envSummary}`,
+        title: `[定时触发] ${sched.name}`,
+        description: `频次：${sched.cron} · 执行 Agent：${sched.targetWorkflowName}\n环境：${envSummary}`,
         acceptanceCriteria: ["指定 Agent 定时派发执行", "目标环境操作验证完成"],
         outcome: isSimulatedFail ? "failed" : "succeeded",
       });
@@ -242,7 +218,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
     if (!taskDescription.trim()) return;
     setBusy(true);
     try {
-      const spec = computeScheduleSpec();
+      const timeStr = computeScheduleHumanSummary();
       const schedId = `sched-${Date.now()}`;
 
       // Save environment configuration to localStorage
@@ -253,7 +229,6 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
         remoteUser: targetEnvType === "remote" ? remoteUser.trim() : undefined,
         remoteDir: targetEnvType === "remote" ? remoteDir.trim() : undefined,
         authMethod: targetEnvType === "remote" ? authMethod : undefined,
-        preCommand: targetEnvType === "remote" ? preCommand.trim() : undefined,
       };
 
       const updatedEnvs = { ...envConfigs, [schedId]: newEnvConfig };
@@ -263,7 +238,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
       const newItem: ScheduleRecord = {
         id: schedId,
         name: taskDescription.trim(),
-        cron: spec.human,
+        cron: timeStr,
         timezone: "Asia/Shanghai (本机)",
         targetWorkflowName: assignedAgent,
         active: true,
@@ -287,7 +262,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
   const handleOpenDetail = (sched: ScheduleRecord) => {
     setSelectedSchedule(sched);
     setEditName(sched.name);
-    setEditCron(sched.cron);
+    setEditTimeStr(sched.cron);
     setEditAgent(sched.targetWorkflowName);
     setDetailTab("edit");
   };
@@ -300,7 +275,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
       const updated: ScheduleRecord = {
         ...selectedSchedule,
         name: editName.trim(),
-        cron: editCron.trim(),
+        cron: editTimeStr.trim(),
         targetWorkflowName: editAgent.trim(),
       };
       await saveSchedule(updated);
@@ -321,7 +296,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
         <div>
           <h1>定时任务</h1>
           <p className="page-subtitle">
-            配置自动化定时规则。使用时间小组件设定频次，选择具体 Agent 节点执行，支持注入目标服务器与环境上下文。
+            配置自动化定时规则。使用时间小组件点选时间，分配具体 Agent 节点执行，支持注入目标服务器与环境上下文。
           </p>
         </div>
         <button
@@ -344,8 +319,8 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
         <table className="apple-tasks-table">
           <thead>
             <tr>
-              <th style={{ width: "22%" }}>时间规格</th>
-              <th style={{ width: "32%" }}>任务内容 & 目标环境</th>
+              <th style={{ width: "20%" }}>触发时间</th>
+              <th style={{ width: "34%" }}>任务内容 & 目标环境</th>
               <th style={{ width: "24%" }}>执行 Agent 节点</th>
               <th style={{ width: "10%" }}>状态</th>
               <th style={{ width: "12%", textAlign: "right" }}>操作</th>
@@ -380,11 +355,11 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                         <strong>{s.name}</strong>
                         {env?.envType === "remote" && env.remoteHost ? (
                           <span className="env-tag remote" title={`主机: ${env.remoteHost} 目录: ${env.remoteDir}`}>
-                            ☁️ 远端主机：{env.remoteHost}
+                            ☁️ 远程主机：{env.remoteHost}
                           </span>
                         ) : (
                           <span className="env-tag local">
-                            🖥 本机隔离工作区
+                            💻 本机隔离工作区
                           </span>
                         )}
                       </div>
@@ -455,31 +430,30 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
           >
             <h3>新建定时规则</h3>
             <p style={{ fontSize: "12px", color: "#86868b", marginTop: "2px" }}>
-              使用时间小组件点选时间，分配具体 Agent 节点执行，并配置服务器环境上下文。
+              使用时间小组件手动点选时间，分配具体 Agent 节点执行，并配置服务器环境上下文。
             </p>
 
-            <form onSubmit={handleAddSchedule} className="modal-body-form" style={{ marginTop: "12px" }}>
+            <form onSubmit={handleAddSchedule} className="modal-body-form" style={{ marginTop: "14px" }}>
               {/* 1. Time Widget (时间小组件) */}
               <div className="time-widget-box">
-                <span className="field-subhead">1. 触发时间规格 (时间小组件)</span>
+                <span className="field-subhead">1. 触发时间点 (时间小组件手动选择)</span>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                   <label>
-                    执行频率
+                    执行频次
                     <select
                       value={frequency}
                       onChange={(e) => setFrequency(e.target.value as typeof frequency)}
                     >
-                      <option value="daily">每天 (Daily)</option>
+                      <option value="daily">每天</option>
                       <option value="workdays">工作日 (周一至周五)</option>
-                      <option value="weekly">每周 (Weekly)</option>
-                      <option value="hourly">每小时 (Hourly)</option>
-                      <option value="custom">自定义 Cron 表达式</option>
+                      <option value="weekly">每周</option>
+                      <option value="hourly">每小时整点</option>
                     </select>
                   </label>
 
-                  {frequency !== "custom" && frequency !== "hourly" && (
+                  {frequency !== "hourly" && (
                     <label>
-                      时间点 (小时 : 分钟)
+                      执行时间点 (小时 : 分钟)
                       <input
                         type="time"
                         required
@@ -496,41 +470,28 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                         value={weekdayValue}
                         onChange={(e) => setWeekdayValue(e.target.value)}
                       >
-                        <option value="1">周一 (Monday)</option>
-                        <option value="2">周二 (Tuesday)</option>
-                        <option value="3">周三 (Wednesday)</option>
-                        <option value="4">周四 (Thursday)</option>
-                        <option value="5">周五 (Friday)</option>
-                        <option value="6">周六 (Saturday)</option>
-                        <option value="0">周日 (Sunday)</option>
+                        <option value="1">周一</option>
+                        <option value="2">周二</option>
+                        <option value="3">周三</option>
+                        <option value="4">周四</option>
+                        <option value="5">周五</option>
+                        <option value="6">周六</option>
+                        <option value="0">周日</option>
                       </select>
-                    </label>
-                  )}
-
-                  {frequency === "custom" && (
-                    <label>
-                      Cron 表达式
-                      <input
-                        required
-                        placeholder="例如：0 2 * * *"
-                        value={customCron}
-                        onChange={(e) => setCustomCron(e.target.value)}
-                      />
                     </label>
                   )}
                 </div>
 
                 <div className="spec-preview-bar">
                   <span>设定预览：</span>
-                  <strong>{computeScheduleSpec().human}</strong>
-                  <code>(Cron: {computeScheduleSpec().cron})</code>
+                  <strong style={{ color: "#0071e3" }}>{computeScheduleHumanSummary()}</strong>
                 </div>
               </div>
 
               {/* 2. Task Description & Agent Assignment */}
-              <div style={{ marginTop: "4px" }}>
+              <div style={{ marginTop: "6px" }}>
                 <label>
-                  任务描述 (需要定时执行的具体操作)
+                  任务执行描述
                   <input
                     required
                     placeholder="例如：拉取最新主干分支，执行全量单元测试与回归套件"
@@ -542,7 +503,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
 
               <div>
                 <label>
-                  分配执行 Agent 节点 (直接分配给具体 Agent)
+                  分配执行 Agent 节点
                   <select
                     value={assignedAgent}
                     onChange={(e) => setAssignedAgent(e.target.value)}
@@ -558,7 +519,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
 
               {/* 3. Server & Execution Environment Context (解决服务器信息与自然语言跑偏的担忧) */}
               <div className="env-context-box">
-                <span className="field-subhead">2. 执行目标环境与服务器上下文 (防止执行越界)</span>
+                <span className="field-subhead">2. 执行目标环境与服务器配置</span>
                 <div style={{ display: "flex", gap: "16px", marginBottom: "8px" }}>
                   <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
                     <input
@@ -567,7 +528,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                       checked={targetEnvType === "local"}
                       onChange={() => setTargetEnvType("local")}
                     />
-                    <span>🖥 本机工作区 (Local Workspace)</span>
+                    <span>💻 本机隔离工作区</span>
                   </label>
 
                   <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
@@ -577,7 +538,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                       checked={targetEnvType === "remote"}
                       onChange={() => setTargetEnvType("remote")}
                     />
-                    <span>☁️ 远端 Linux 服务器 (Remote SSH Host)</span>
+                    <span>☁️ 远程 Linux 服务器 (SSH)</span>
                   </label>
                 </div>
 
@@ -616,11 +577,11 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                         <input
                           value={remoteDir}
                           onChange={(e) => setRemoteDir(e.target.value)}
-                          placeholder="/var/log 或 /opt/app"
+                          placeholder="/opt/app 或 /var/log"
                         />
                       </label>
                       <label>
-                        认证凭证方式
+                        SSH 认证方式
                         <select
                           value={authMethod}
                           onChange={(e) => setAuthMethod(e.target.value)}
@@ -632,7 +593,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                     </div>
 
                     <p className="env-assurance-note">
-                      🔒 <strong>上下文保障</strong>：系统在唤醒 Agent 时会将上述服务器地址、工作目录与 SSH 访问凭证作为结构化不可变上下文注入，确保 Agent 精准操作指定主机，避免由于自然语言模糊产生跑偏或虚构。
+                      🔒 <strong>执行确定性保障</strong>：系统在唤醒 Agent 时会将服务器主机 IP、工作路径与免密凭证作为结构化不可变契约注入给 Agent。Agent 会通过真实 SSH 通道探查并执行指令，杜绝由自然语言模糊导致的空想或跑偏。
                     </p>
                   </div>
                 ) : (
@@ -655,7 +616,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                   type="submit"
                   disabled={busy}
                 >
-                  {busy ? "保存中…" : "保存并激活规则"}
+                  {busy ? "保存中…" : "保存并启用规则"}
                 </button>
               </div>
             </form>
@@ -703,11 +664,11 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                 </label>
 
                 <label>
-                  执行时间规格
+                  执行时间点
                   <input
                     required
-                    value={editCron}
-                    onChange={(e) => setEditCron(e.target.value)}
+                    value={editTimeStr}
+                    onChange={(e) => setEditTimeStr(e.target.value)}
                   />
                 </label>
 
@@ -729,7 +690,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                   <div style={{ padding: "8px 12px", background: "#f5f5f7", borderRadius: "8px", fontSize: "11px", color: "#86868b" }}>
                     <strong>绑定的目标环境：</strong>
                     {envConfigs[selectedSchedule.id].envType === "remote" ? (
-                      <span>远端主机 {envConfigs[selectedSchedule.id].remoteHost} ({envConfigs[selectedSchedule.id].remoteDir})</span>
+                      <span>远程主机 {envConfigs[selectedSchedule.id].remoteHost} ({envConfigs[selectedSchedule.id].remoteDir})</span>
                     ) : (
                       <span>本机隔离工作区</span>
                     )}
