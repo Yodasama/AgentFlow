@@ -2670,51 +2670,79 @@ h1 {
   pointer-events: none;
 }
 
-.history-sidebar-header {
-  height: 52px;
-  min-height: 52px;
+/* History Sidebar Top Horizontal Bar (Sleek New Chat) */
+.history-top-bar {
+  height: 42px;
+  min-height: 42px;
   box-sizing: border-box;
-  padding: 0 14px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   background: #f7f7f6;
 }
 
-.history-header-title {
+.history-new-chat-bar-btn {
+  width: 100%;
+  height: 28px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #18181b;
-  letter-spacing: -0.01em;
-}
-
-.history-new-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  justify-content: space-between;
+  padding: 0 9px;
   background: #ffffff;
-  padding: 3px 9px;
-  border-radius: 99px;
-  font-size: 11px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 500;
   color: #18181b;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.history-new-btn:hover {
-  background: #f4f4f5;
-  border-color: rgba(0, 0, 0, 0.14);
+.history-new-chat-bar-btn:hover {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.04);
 }
 
-.history-new-btn:active {
-  transform: scale(0.96);
+.history-new-chat-bar-btn:active {
+  transform: scale(0.98);
+}
+
+.history-new-chat-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.history-new-chat-badge {
+  font-size: 10px;
+  color: #71717a;
+  background: #f4f4f5;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* History Group Sections */
+.history-group-section {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+}
+
+.history-group-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #a1a1a6;
+  padding: 6px 8px 3px 8px;
+  letter-spacing: 0.02em;
+}
+
+.history-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .history-sessions-list {
@@ -2842,8 +2870,8 @@ h1 {
   justify-content: space-between;
   align-items: center;
   padding: 0 22px;
-  height: 52px;
-  min-height: 52px;
+  height: 42px;
+  min-height: 42px;
   box-sizing: border-box;
   background: #ffffff;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);

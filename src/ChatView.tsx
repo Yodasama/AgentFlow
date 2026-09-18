@@ -151,6 +151,47 @@ function formatSessionTime(timestamp: number): string {
   return `${d.getMonth() + 1}-${d.getDate()}`;
 }
 
+interface SessionTimeGroup {
+  label: string;
+  items: ChatSession[];
+}
+
+function groupSessionsByTime(sessions: ChatSession[]): SessionTimeGroup[] {
+  const sorted = [...sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yesterdayStart = todayStart - 86400000;
+  const last7DaysStart = todayStart - 6 * 86400000;
+
+  const today: ChatSession[] = [];
+  const yesterday: ChatSession[] = [];
+  const last7Days: ChatSession[] = [];
+  const earlier: ChatSession[] = [];
+
+  for (const s of sorted) {
+    const t = s.updatedAt || 0;
+    if (t >= todayStart) {
+      today.push(s);
+    } else if (t >= yesterdayStart) {
+      yesterday.push(s);
+    } else if (t >= last7DaysStart) {
+      last7Days.push(s);
+    } else {
+      earlier.push(s);
+    }
+  }
+
+  const groups: SessionTimeGroup[] = [];
+  if (today.length > 0) groups.push({ label: "今天", items: today });
+  if (yesterday.length > 0) groups.push({ label: "昨天", items: yesterday });
+  if (last7Days.length > 0) groups.push({ label: "最近 7 天", items: last7Days });
+  if (earlier.length > 0) groups.push({ label: "更早", items: earlier });
+
+  return groups.length > 0 ? groups : [{ label: "全部会话", items: sorted }];
+}
+
+
 export function ChatView({
   onNavigateToRun,
   onNavigateToTab,
@@ -821,50 +862,60 @@ export function ChatView({
     showToast(`已切换至分支【${val}】`);
   };
 
+  const groupedSessions = groupSessionsByTime(sessions);
+
   return (
     <div className="gpt-chat-root">
       {/* Left Collapsible History Sidebar */}
       <aside className={`chat-history-sidebar ${showHistory ? "" : "collapsed"}`}>
-        <div className="history-sidebar-header">
-          <div className="history-header-title">
-            <IconHistory size={14} stroke="#111111" />
-            <span>历史会话</span>
-          </div>
+        {/* Top Horizontal Bar: Sleek New Chat Button */}
+        <div className="history-top-bar">
           <button
             type="button"
-            className="history-new-btn"
+            className="history-new-chat-bar-btn"
             onClick={handleNewSession}
             title="开启新对话"
           >
-            <IconPlus size={12} stroke="#111111" />
-            <span>新对话</span>
+            <div className="history-new-chat-left">
+              <IconPlus size={13} stroke="#18181b" />
+              <span>新对话</span>
+            </div>
+            <span className="history-new-chat-badge">新建</span>
           </button>
         </div>
 
+        {/* Chronological History List Grouped by Time */}
         <div className="history-sessions-list">
-          {sessions.map((s) => {
-            const isActive = s.id === activeSessionId;
-            return (
-              <div
-                key={s.id}
-                className={`history-session-item ${isActive ? "active" : ""}`}
-                onClick={() => setActiveSessionId(s.id)}
-              >
-                <div className="history-session-info">
-                  <span className="history-session-title">{s.title || "新会话"}</span>
-                  <span className="history-session-date">{formatSessionTime(s.updatedAt)}</span>
-                </div>
-                <button
-                  type="button"
-                  className="history-delete-btn"
-                  onClick={(e) => handleDeleteSession(s.id, e)}
-                  title="删除此会话"
-                >
-                  <IconTrash size={12} />
-                </button>
+          {groupedSessions.map((group) => (
+            <div key={group.label} className="history-group-section">
+              <div className="history-group-label">{group.label}</div>
+              <div className="history-group-items">
+                {group.items.map((s) => {
+                  const isActive = s.id === activeSessionId;
+                  return (
+                    <div
+                      key={s.id}
+                      className={`history-session-item ${isActive ? "active" : ""}`}
+                      onClick={() => setActiveSessionId(s.id)}
+                    >
+                      <div className="history-session-info">
+                        <span className="history-session-title">{s.title || "新会话"}</span>
+                        <span className="history-session-date">{formatSessionTime(s.updatedAt)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="history-delete-btn"
+                        onClick={(e) => handleDeleteSession(s.id, e)}
+                        title="删除此会话"
+                      >
+                        <IconTrash size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </aside>
 
