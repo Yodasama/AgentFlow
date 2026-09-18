@@ -2,6 +2,7 @@
 /dist/
 /target/
 /src-tauri/binaries/agentflow-runner-*
+/src-tauri/binaries/agentflow-mock-cli-*
 /src-tauri/gen/
 *.tsbuildinfo
 /vite.config.js
