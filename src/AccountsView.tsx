@@ -153,6 +153,33 @@ export function AccountsView() {
           </div>
         )}
       </section>
+
+      <section className="concurrency-governance-panel">
+        <div className="panel-heading">
+          <h3>Agent 适配器通用协议接口规范 (P4 适配器留空与契约定义)</h3>
+          <span className="status-tag">Protocol v1 Specification</span>
+        </div>
+        <div style={{ fontSize: "13px", color: "#cbd5e1", lineHeight: 1.6, marginTop: "10px" }}>
+          <p>
+            为隔离外部大模型 CLI 的差异，系统对所有真实 Agent 适配器（包括未来接入的 OpenAI Codex CLI 与 Anthropic Claude CLI）采用统一的
+            <strong> 版本化文件协议（Runner Launch Manifest）</strong>：
+          </p>
+          <ul style={{ paddingLeft: "20px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            <li>
+              <strong>启动入参：</strong>通过标准命令行传递 <code>--launch /path/to/launch.json</code>，环境变量显式白名单清空后注入。
+            </li>
+            <li>
+              <strong>进程组安全：</strong>Runner 必须通过 <code>setpgid(0, 0)</code> 独立建组，接收 SIGTERM / SIGKILL 级联终止，防止孤儿进程。
+            </li>
+            <li>
+              <strong>双流捕获：</strong>标准输出与标准错误分别原子写入 <code>stdout.log</code> 与 <code>stderr.log</code>。
+            </li>
+            <li>
+              <strong>结果合同：</strong>执行完成时在专属 Attempt 目录原子写入 <code>result.json</code>（包含状态、结构化结果与摘要）。
+            </li>
+          </ul>
+        </div>
+      </section>
     </div>
   );
 }

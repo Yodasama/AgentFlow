@@ -490,7 +490,14 @@ function App() {
 
         {activeTab === "Agent 账号" && <AccountsView />}
 
-        {activeTab === "工作流" && <WorkflowEditor />}
+        {activeTab === "工作流" && (
+          <WorkflowEditor
+            onLaunchTask={(id) => {
+              void selectRun(id);
+              setActiveTab("运行记录");
+            }}
+          />
+        )}
 
         {activeTab === "定时任务" && (
           <SchedulesView

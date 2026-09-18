@@ -2,8 +2,8 @@ use agentflow_core::{
     development_flow::{HumanApproval, standard_development_workflow},
     development_runtime::{MockDevelopmentScenario, create_mock_development_run},
     domain::{
-        AccountStatusSummary, CheckpointRecord, CreateMockTaskRequest, ResourceLockRecord,
-        RunDetail, RunSummary,
+        AccountStatusSummary, CheckpointRecord, CreateMockTaskRequest, GoalRecord,
+        ResourceLockRecord, RunDetail, RunSummary, ScheduleRecord,
     },
     execution::{AppInstanceLock, SchedulerConfig, SchedulerHandle, request_cancellation},
     protocol::RUNNER_PROTOCOL_VERSION,
@@ -261,6 +261,102 @@ fn get_account_states(state: State<'_, AppCoreState>) -> Result<AccountOverview,
     })
 }
 
+#[tauri::command]
+fn get_checkpoint_diff(
+    checkpoint_id: uuid::Uuid,
+    state: State<'_, AppCoreState>,
+) -> Result<String, String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .get_checkpoint_diff(checkpoint_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_schedules(state: State<'_, AppCoreState>) -> Result<Vec<ScheduleRecord>, String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .list_schedules()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_schedule(
+    schedule: ScheduleRecord,
+    state: State<'_, AppCoreState>,
+) -> Result<(), String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .save_schedule(&schedule)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn toggle_schedule(id: String, state: State<'_, AppCoreState>) -> Result<bool, String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .toggle_schedule(&id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn delete_schedule(id: String, state: State<'_, AppCoreState>) -> Result<(), String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .delete_schedule(&id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_goals(state: State<'_, AppCoreState>) -> Result<Vec<GoalRecord>, String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .list_goals()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_goal(goal: GoalRecord, state: State<'_, AppCoreState>) -> Result<(), String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .save_goal(&goal)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn toggle_milestone(milestone_id: String, state: State<'_, AppCoreState>) -> Result<bool, String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .toggle_milestone(&milestone_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn delete_goal(id: String, state: State<'_, AppCoreState>) -> Result<(), String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .delete_goal(&id)
+        .map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -310,7 +406,16 @@ pub fn run() {
             list_workflow_versions,
             list_checkpoints,
             get_attempt_logs,
-            get_account_states
+            get_account_states,
+            get_checkpoint_diff,
+            list_schedules,
+            save_schedule,
+            toggle_schedule,
+            delete_schedule,
+            list_goals,
+            save_goal,
+            toggle_milestone,
+            delete_goal
         ])
         .run(tauri::generate_context!())
         .expect("failed to run AgentFlow");

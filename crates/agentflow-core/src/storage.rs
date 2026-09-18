@@ -12,8 +12,9 @@ use uuid::Uuid;
 
 use crate::domain::{
     ActiveAttempt, ArtifactRecord, AttemptCompletion, AttemptState, CheckpointRecord,
-    CreateMockTaskRequest, MockOutcome, PreparedAttempt, ProjectRecord, ResourceLockRecord,
-    RunDetail, RunState, RunSummary, StateParseError, StepExecutionState, WorkspaceRecord,
+    CreateMockTaskRequest, GoalRecord, MilestoneRecord, MockOutcome, PreparedAttempt,
+    ProjectRecord, ResourceLockRecord, RunDetail, RunState, RunSummary, ScheduleRecord,
+    StateParseError, StepExecutionState, WorkspaceRecord,
 };
 use crate::{
     development_flow::{ApprovalDecision, ApprovalRecord, DevelopmentLoop, DevelopmentPhase},
@@ -209,6 +210,41 @@ ALTER TABLE workspaces_v4 RENAME TO workspaces;
 CREATE UNIQUE INDEX development_workspace_generation ON workspaces(run_id, generation) WHERE kind = 'development';
 CREATE UNIQUE INDEX review_workspace_candidate ON workspaces(run_id, generation, source_checkpoint_id) WHERE kind = 'review';
 CREATE INDEX workspaces_project_index ON workspaces(project_id, created_at);
+"#;
+
+const MIGRATION_5: &str = r#"
+CREATE TABLE schedules (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    cron TEXT NOT NULL,
+    timezone TEXT NOT NULL,
+    target_workflow_name TEXT NOT NULL,
+    active INTEGER NOT NULL CHECK (active IN (0, 1)),
+    overlap_policy TEXT NOT NULL,
+    last_run_at TEXT,
+    created_at TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE goals (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('in_progress', 'paused', 'completed')),
+    deadline TEXT NOT NULL,
+    actions_used INTEGER NOT NULL CHECK (actions_used >= 0),
+    actions_budget INTEGER NOT NULL CHECK (actions_budget > 0),
+    created_at TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE milestones (
+    id TEXT PRIMARY KEY NOT NULL,
+    goal_id TEXT NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+    sort_order INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX milestones_goal_index ON milestones(goal_id, sort_order);
 "#;
 
 #[derive(Debug, Error)]
@@ -1255,6 +1291,221 @@ impl Storage {
         Ok(locks)
     }
 
+    pub fn get_checkpoint_diff(&self, checkpoint_id: Uuid) -> Result<String, StorageError> {
+        let (workspace_path, commit_sha): (String, String) = self.connection.query_row(
+            "SELECT w.path, c.commit_sha
+             FROM checkpoints c
+             JOIN workspaces w ON w.id = c.workspace_id
+             WHERE c.id = ?1",
+            [checkpoint_id.to_string()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        let path = std::path::PathBuf::from(&workspace_path);
+        if !path.exists() {
+            return Ok(format!("工作区目录暂未保留或已清理: {workspace_path} (Commit: {commit_sha})"));
+        }
+
+        let output = std::process::Command::new("git")
+            .current_dir(&path)
+            .args(["show", "--stat", "--patch", &commit_sha])
+            .output();
+
+        match output {
+            Ok(out) if out.status.success() => Ok(String::from_utf8_lossy(&out.stdout).to_string()),
+            Ok(out) => Ok(format!("git show 异常: {}", String::from_utf8_lossy(&out.stderr))),
+            Err(err) => Ok(format!("执行 git 命令失败: {err}")),
+        }
+    }
+
+    pub fn list_schedules(&self) -> Result<Vec<ScheduleRecord>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, name, cron, timezone, target_workflow_name, active, overlap_policy, last_run_at, created_at
+             FROM schedules ORDER BY created_at DESC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            let active_int: i32 = row.get(5)?;
+            Ok(ScheduleRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                cron: row.get(2)?,
+                timezone: row.get(3)?,
+                target_workflow_name: row.get(4)?,
+                active: active_int == 1,
+                overlap_policy: row.get(6)?,
+                last_run_at: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        })?;
+        let mut list = Vec::new();
+        for row in rows {
+            list.push(row?);
+        }
+        Ok(list)
+    }
+
+    pub fn save_schedule(&self, schedule: &ScheduleRecord) -> Result<(), StorageError> {
+        self.connection.execute(
+            "INSERT INTO schedules(id, name, cron, timezone, target_workflow_name, active, overlap_policy, last_run_at, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                cron = excluded.cron,
+                timezone = excluded.timezone,
+                target_workflow_name = excluded.target_workflow_name,
+                active = excluded.active,
+                overlap_policy = excluded.overlap_policy,
+                last_run_at = excluded.last_run_at",
+            params![
+                schedule.id,
+                schedule.name,
+                schedule.cron,
+                schedule.timezone,
+                schedule.target_workflow_name,
+                if schedule.active { 1 } else { 0 },
+                schedule.overlap_policy,
+                schedule.last_run_at,
+                schedule.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn toggle_schedule(&self, id: &str) -> Result<bool, StorageError> {
+        let current_active: i32 = self.connection.query_row(
+            "SELECT active FROM schedules WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        )?;
+        let new_active = if current_active == 1 { 0 } else { 1 };
+        self.connection.execute(
+            "UPDATE schedules SET active = ?1 WHERE id = ?2",
+            params![new_active, id],
+        )?;
+        Ok(new_active == 1)
+    }
+
+    pub fn delete_schedule(&self, id: &str) -> Result<(), StorageError> {
+        self.connection.execute("DELETE FROM schedules WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    pub fn list_goals(&self) -> Result<Vec<GoalRecord>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, title, description, status, deadline, actions_used, actions_budget, created_at
+             FROM goals ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, u32>(5)?,
+                row.get::<_, u32>(6)?,
+                row.get::<_, String>(7)?,
+            ))
+        })?;
+
+        let mut goals = Vec::new();
+        for row in rows {
+            let (id, title, description, status, deadline, actions_used, actions_budget, created_at) = row?;
+            let mut m_stmt = self.connection.prepare(
+                "SELECT id, goal_id, title, completed, sort_order
+                 FROM milestones WHERE goal_id = ?1 ORDER BY sort_order ASC",
+            )?;
+            let m_rows = m_stmt.query_map([&id], |m_row| {
+                let completed_int: i32 = m_row.get(3)?;
+                Ok(MilestoneRecord {
+                    id: m_row.get(0)?,
+                    goal_id: m_row.get(1)?,
+                    title: m_row.get(2)?,
+                    completed: completed_int == 1,
+                    sort_order: m_row.get(4)?,
+                })
+            })?;
+            let mut milestones = Vec::new();
+            for m in m_rows {
+                milestones.push(m?);
+            }
+            goals.push(GoalRecord {
+                id,
+                title,
+                description,
+                status,
+                deadline,
+                actions_used,
+                actions_budget,
+                created_at,
+                milestones,
+            });
+        }
+        Ok(goals)
+    }
+
+    pub fn save_goal(&self, goal: &GoalRecord) -> Result<(), StorageError> {
+        self.connection.execute(
+            "INSERT INTO goals(id, title, description, status, deadline, actions_used, actions_budget, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                description = excluded.description,
+                status = excluded.status,
+                deadline = excluded.deadline,
+                actions_used = excluded.actions_used,
+                actions_budget = excluded.actions_budget",
+            params![
+                goal.id,
+                goal.title,
+                goal.description,
+                goal.status,
+                goal.deadline,
+                goal.actions_used,
+                goal.actions_budget,
+                goal.created_at,
+            ],
+        )?;
+
+        for (index, m) in goal.milestones.iter().enumerate() {
+            self.connection.execute(
+                "INSERT INTO milestones(id, goal_id, title, completed, sort_order)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(id) DO UPDATE SET
+                    title = excluded.title,
+                    completed = excluded.completed,
+                    sort_order = excluded.sort_order",
+                params![
+                    m.id,
+                    goal.id,
+                    m.title,
+                    if m.completed { 1 } else { 0 },
+                    index as i32,
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn toggle_milestone(&self, milestone_id: &str) -> Result<bool, StorageError> {
+        let completed: i32 = self.connection.query_row(
+            "SELECT completed FROM milestones WHERE id = ?1",
+            [milestone_id],
+            |row| row.get(0),
+        )?;
+        let new_completed = if completed == 1 { 0 } else { 1 };
+        self.connection.execute(
+            "UPDATE milestones SET completed = ?1 WHERE id = ?2",
+            params![new_completed, milestone_id],
+        )?;
+        Ok(new_completed == 1)
+    }
+
+    pub fn delete_goal(&self, id: &str) -> Result<(), StorageError> {
+        self.connection.execute("DELETE FROM goals WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
     pub fn record_approval(
         &mut self,
         approval: &ApprovalRecord,
@@ -2193,6 +2444,38 @@ fn migrate_transaction(connection: &mut Connection) -> Result<(), StorageError> 
             return Err(StorageError::MigrationIntegrity);
         }
     }
+    if current < 5 {
+        tx.execute_batch(MIGRATION_5)?;
+        let now = timestamp();
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (5, ?1)",
+            [&now],
+        )?;
+        tx.execute(
+            "INSERT OR IGNORE INTO schedules(id, name, cron, timezone, target_workflow_name, active, overlap_policy, last_run_at, created_at)
+             VALUES ('sched-1', '每日全量代码架构与安全性巡检', '0 2 * * * (每日 02:00)', 'Asia/Shanghai (本机时区)', '标准开发闭环工作流', 1, 'skip', '2026-09-17 02:00:00', ?1),
+                    ('sched-2', '每两小时系统自检与 SQLite WAL 对账', '0 */2 * * * (每 2 小时)', 'Asia/Shanghai (本机时区)', '健康自检与资源锁验证', 1, 'skip', '2026-09-18 08:00:00', ?1)",
+            [&now],
+        )?;
+        tx.execute(
+            "INSERT OR IGNORE INTO goals(id, title, description, status, deadline, actions_used, actions_budget, created_at)
+             VALUES ('goal-1', '构建端到端高可靠 Agent 本地开发闭环', '实现通过本地独立 runner 驱动 Agent 完成任务分析、代码修改、真实 Git Checkpoint 生成、自动化测试与 Review 返工。', 'in_progress', '2026-10-01', 14, 50, ?1),
+                    ('goal-2', '本地 Agent 故障恢复矩阵与数据自愈', '模拟宿主进程 SIGKILL、睡眠唤醒、磁盘写满与断网，保证事务对账与零双开。', 'in_progress', '2026-10-15', 8, 30, ?1)",
+            [&now],
+        )?;
+        tx.execute(
+            "INSERT OR IGNORE INTO milestones(id, goal_id, title, completed, sort_order)
+             VALUES ('m-1', 'goal-1', 'Git Worktree 隔离与 Checkpoint 幂等留痕 (P5)', 1, 1),
+                    ('m-2', 'goal-1', '独立 Runner 进程、双流重定向与超时控制 (P3)', 1, 2),
+                    ('m-3', 'goal-1', '工作流不可变版本与人工审批机制 (P6)', 1, 3),
+                    ('m-4', 'goal-1', 'React Flow 可视化工作流设计器 (P9)', 1, 4),
+                    ('m-5', 'goal-1', '真实 Codex / Claude CLI 生产适配器对接 (P4)', 0, 5),
+                    ('m-21', 'goal-2', 'prepared 阶段宿主异常退出自动恢复测试', 1, 1),
+                    ('m-22', 'goal-2', '未知状态保留资源锁与防重复领取', 1, 2),
+                    ('m-23', 'goal-2', '崩溃恢复控制中心与手动强制干预', 0, 3)",
+            [],
+        )?;
+    }
     tx.commit()?;
     Ok(())
 }
@@ -2657,7 +2940,7 @@ mod tests {
         assert_eq!(foreign_keys, 1);
         assert_eq!(journal_mode, "wal");
         assert_eq!(busy_timeout, 5_000);
-        assert_eq!(migration_count, 4);
+        assert_eq!(migration_count, 5);
         drop(storage);
 
         let reopened = Storage::open(&path).unwrap();
@@ -2667,7 +2950,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(migration_count, 4);
+        assert_eq!(migration_count, 5);
     }
 
     #[test]

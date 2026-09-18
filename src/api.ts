@@ -242,3 +242,62 @@ export const getAttemptLogs = (runId: string, attemptId: string) =>
 
 export const getAccountStates = () =>
   invoke<AccountOverview>("get_account_states");
+
+export const getCheckpointDiff = (checkpointId: string) =>
+  invoke<string>("get_checkpoint_diff", { checkpointId });
+
+export interface ScheduleRecord {
+  id: string;
+  name: string;
+  cron: string;
+  timezone: string;
+  targetWorkflowName: string;
+  active: boolean;
+  overlapPolicy: string;
+  lastRunAt: string | null;
+  createdAt: string;
+}
+
+export interface MilestoneRecord {
+  id: string;
+  goalId: string;
+  title: string;
+  completed: boolean;
+  sortOrder: number;
+}
+
+export interface GoalRecord {
+  id: string;
+  title: string;
+  description: string;
+  status: "in_progress" | "paused" | "completed";
+  deadline: string;
+  actionsUsed: number;
+  actionsBudget: number;
+  createdAt: string;
+  milestones: MilestoneRecord[];
+}
+
+export const listSchedules = () =>
+  invoke<ScheduleRecord[]>("list_schedules");
+
+export const saveSchedule = (schedule: ScheduleRecord) =>
+  invoke<void>("save_schedule", { schedule });
+
+export const toggleSchedule = (id: string) =>
+  invoke<boolean>("toggle_schedule", { id });
+
+export const deleteSchedule = (id: string) =>
+  invoke<void>("delete_schedule", { id });
+
+export const listGoals = () =>
+  invoke<GoalRecord[]>("list_goals");
+
+export const saveGoal = (goal: GoalRecord) =>
+  invoke<void>("save_goal", { goal });
+
+export const toggleMilestone = (milestoneId: string) =>
+  invoke<boolean>("toggle_milestone", { milestoneId });
+
+export const deleteGoal = (id: string) =>
+  invoke<void>("delete_goal", { id });

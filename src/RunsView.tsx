@@ -2,8 +2,10 @@ import { useEffect, useState, useCallback } from "react";
 import {
   getRun,
   cancelRun,
+  createMockTask,
   getAttemptLogs,
   listCheckpoints,
+  getCheckpointDiff,
   type RunDetail,
   type RunSummary,
   type RunState,
@@ -40,11 +42,17 @@ export function RunsView({ runs, selectedRunId, onSelectRun, onApproval, busy, o
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [filterState, setFilterState] = useState<string>("all");
   const [error, setError] = useState<string | null>(null);
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  // Git Diff Viewer state
+  const [selectedCheckpointDiff, setSelectedCheckpointDiff] = useState<{ id: string; text: string } | null>(null);
+  const [loadingDiff, setLoadingDiff] = useState(false);
 
   const loadRunDetail = useCallback(async (runId: string) => {
     try {
       const data = await getRun(runId);
       setDetail(data);
+      setSelectedCheckpointDiff(null);
 
       if (data.attemptId) {
         setLoadingLogs(true);
@@ -88,6 +96,51 @@ export function RunsView({ runs, selectedRunId, onSelectRun, onApproval, busy, o
       await loadRunDetail(detail.runId);
     } catch (err) {
       setError(String(err));
+    }
+  };
+
+  const handleRerun = async () => {
+    if (!detail) return;
+    setError(null);
+    try {
+      const newRun = await createMockTask({
+        title: `[重新执行] ${detail.title}`,
+        description: detail.description,
+        acceptanceCriteria: detail.acceptanceCriteria,
+        outcome: "succeeded",
+      });
+      await onRefresh();
+      onSelectRun(newRun.runId);
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  const handleViewDiff = async (checkpoint: CheckpointRecord) => {
+    if (selectedCheckpointDiff?.id === checkpoint.checkpointId) {
+      setSelectedCheckpointDiff(null);
+      return;
+    }
+    setLoadingDiff(true);
+    try {
+      const diff = await getCheckpointDiff(checkpoint.checkpointId);
+      setSelectedCheckpointDiff({ id: checkpoint.checkpointId, text: diff });
+    } catch (err) {
+      setSelectedCheckpointDiff({ id: checkpoint.checkpointId, text: `读取 Diff 异常: ${String(err)}` });
+    } finally {
+      setLoadingDiff(false);
+    }
+  };
+
+  const handleCopyLogs = async () => {
+    const text = activeLogTab === "stdout" ? logs?.stdout : logs?.stderr;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch {
+      // ignore
     }
   };
 
@@ -161,6 +214,11 @@ export function RunsView({ runs, selectedRunId, onSelectRun, onApproval, busy, o
                       取消执行
                     </button>
                   )}
+                  {["succeeded", "failed", "cancelled", "interrupted"].includes(detail.runState) && (
+                    <button className="secondary" type="button" disabled={busy} onClick={() => void handleRerun()}>
+                      重新执行此任务
+                    </button>
+                  )}
                   <span className={`state ${detail.runState}`}>{stateLabels[detail.runState]}</span>
                 </div>
               </div>
@@ -173,17 +231,52 @@ export function RunsView({ runs, selectedRunId, onSelectRun, onApproval, busy, o
 
               {checkpoints.length > 0 && (
                 <section className="checkpoints-section">
-                  <h4>Git Checkpoint 快照 ({checkpoints.length})</h4>
+                  <div className="panel-heading" style={{ marginBottom: "8px" }}>
+                    <h4>Git Checkpoint 快照与提交记录 ({checkpoints.length})</h4>
+                    <small>不可变代码快照留痕</small>
+                  </div>
                   <div className="checkpoints-list">
-                    {checkpoints.map((cp) => (
-                      <div key={cp.checkpointId} className="checkpoint-card">
-                        <div>
-                          <strong>Commit: <code>{cp.commitSha?.slice(0, 10) ?? "—"}</code></strong>
-                          <span className="marker-tag">{cp.marker}</span>
+                    {checkpoints.map((cp) => {
+                      const isShowingDiff = selectedCheckpointDiff?.id === cp.checkpointId;
+                      return (
+                        <div key={cp.checkpointId} className="checkpoint-container">
+                          <div className="checkpoint-card">
+                            <div>
+                              <strong>Commit: <code>{cp.commitSha?.slice(0, 10) ?? "—"}</code></strong>
+                              <span className="marker-tag">{cp.marker}</span>
+                              {cp.noChanges && <span className="marker-tag" style={{ color: "#f59e0b" }}>无代码变更</span>}
+                            </div>
+                            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                              <small>{new Date(cp.createdAt).toLocaleTimeString()}</small>
+                              <button
+                                className="secondary-sm"
+                                type="button"
+                                disabled={loadingDiff}
+                                onClick={() => void handleViewDiff(cp)}
+                              >
+                                {isShowingDiff ? "收起 Diff" : "查看代码 Diff"}
+                              </button>
+                            </div>
+                          </div>
+                          {isShowingDiff && (
+                            <div className="diff-viewer-panel">
+                              <div className="diff-viewer-header">
+                                <span>Git Commit Diff: <code>{cp.commitSha}</code></span>
+                              </div>
+                              <pre className="diff-content">
+                                {selectedCheckpointDiff.text.split("\n").map((line, idx) => {
+                                  let cls = "diff-line";
+                                  if (line.startsWith("+") && !line.startsWith("+++")) cls += " add";
+                                  else if (line.startsWith("-") && !line.startsWith("---")) cls += " del";
+                                  else if (line.startsWith("@@")) cls += " meta";
+                                  return <div key={idx} className={cls}>{line}</div>;
+                                })}
+                              </pre>
+                            </div>
+                          )}
                         </div>
-                        <small>创建时间: {new Date(cp.createdAt).toLocaleString()}</small>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               )}
@@ -207,6 +300,9 @@ export function RunsView({ runs, selectedRunId, onSelectRun, onApproval, busy, o
                     </button>
                   </div>
                   <div className="log-meta">
+                    <button className="secondary-sm" type="button" onClick={() => void handleCopyLogs()}>
+                      {copySuccess ? "✓ 已复制到剪贴板" : "复制日志"}
+                    </button>
                     <small>Attempt #{detail.attemptNumber ?? "无"}</small>
                     <button
                       className="secondary-sm"

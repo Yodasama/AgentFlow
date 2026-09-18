@@ -16,6 +16,7 @@ import {
   validateWorkflow,
   publishWorkflow,
   listWorkflowVersions,
+  createMockDevelopmentTask,
   type WorkflowDefinition,
   type WorkflowNode,
   type WorkflowVersionRecord,
@@ -41,7 +42,6 @@ const kindLabels: Record<WorkflowNode["kind"], string> = {
 };
 
 function workflowToFlow(definition: WorkflowDefinition) {
-  // Convert workflow nodes to ReactFlow nodes
   const nodes: Node[] = definition.nodes.map((node, index) => {
     const col = index % 3;
     const row = Math.floor(index / 3);
@@ -49,7 +49,7 @@ function workflowToFlow(definition: WorkflowDefinition) {
 
     return {
       id: node.id,
-      position: { x: col * 260 + 40, y: row * 160 + 40 },
+      position: { x: col * 260 + 40, y: row * 170 + 40 },
       data: {
         label: (
           <div style={{ padding: "8px 10px", fontSize: "12px", textAlign: "left" }}>
@@ -126,7 +126,11 @@ function workflowToFlow(definition: WorkflowDefinition) {
   return { nodes, edges };
 }
 
-export function WorkflowEditor() {
+interface Props {
+  onLaunchTask?: (runId: string) => void;
+}
+
+export function WorkflowEditor({ onLaunchTask }: Props) {
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -136,6 +140,14 @@ export function WorkflowEditor() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [showVersions, setShowVersions] = useState(false);
+  const [showLaunchModal, setShowLaunchModal] = useState(false);
+  const [repoPath, setRepoPath] = useState("");
+  const [taskTitle, setTaskTitle] = useState("基于定制工作流执行开发");
+
+  // Node editing state
+  const [editLabel, setEditLabel] = useState("");
+  const [editRole, setEditRole] = useState("");
+  const [editInputs, setEditInputs] = useState("");
 
   const loadWorkflow = useCallback((def: WorkflowDefinition) => {
     setDefinition(def);
@@ -161,6 +173,14 @@ export function WorkflowEditor() {
     void refreshVersions();
   }, [loadWorkflow, refreshVersions]);
 
+  useEffect(() => {
+    if (selectedNode) {
+      setEditLabel(selectedNode.label);
+      setEditRole(selectedNode.role ?? "");
+      setEditInputs(selectedNode.requiredInputs.join(", "));
+    }
+  }, [selectedNode]);
+
   const handleValidate = async () => {
     if (!definition) return;
     setBusy(true);
@@ -169,7 +189,7 @@ export function WorkflowEditor() {
       const report = await validateWorkflow(definition);
       setValidation(report);
       if (report.valid) {
-        setMessage("工作流结构合法，各项校验已通过。");
+        setMessage("工作流结构合法，各项校验均已通过。");
       }
     } catch (err) {
       setMessage(`校验异常：${String(err)}`);
@@ -207,6 +227,88 @@ export function WorkflowEditor() {
     }
   };
 
+  const handleSaveNodeEdit = () => {
+    if (!definition || !selectedNode) return;
+    const updatedNodes = definition.nodes.map((n) => {
+      if (n.id === selectedNode.id) {
+        return {
+          ...n,
+          label: editLabel.trim() || n.label,
+          role: editRole.trim() || null,
+          requiredInputs: editInputs.split(",").map((s) => s.trim()).filter(Boolean),
+        };
+      }
+      return n;
+    });
+
+    const newDef: WorkflowDefinition = {
+      ...definition,
+      nodes: updatedNodes,
+    };
+    loadWorkflow(newDef);
+    setMessage(`节点 ${selectedNode.id} 属性已更新。`);
+  };
+
+  const handleDeleteNode = (nodeId: string) => {
+    if (!definition) return;
+    const newNodes = definition.nodes.filter((n) => n.id !== nodeId);
+    const newEdges = definition.edges.filter((e) => e.source !== nodeId && e.target !== nodeId);
+    const newDef: WorkflowDefinition = {
+      ...definition,
+      nodes: newNodes,
+      edges: newEdges,
+    };
+    loadWorkflow(newDef);
+    setSelectedNode(null);
+    setMessage(`节点 ${nodeId} 已从画布移除。`);
+  };
+
+  const handleAddNode = (kind: WorkflowNode["kind"]) => {
+    if (!definition) return;
+    const newId = `node_${kind}_${Date.now()}`;
+    const newNode: WorkflowNode = {
+      id: newId,
+      version: 1,
+      kind,
+      label: `新 ${kindLabels[kind]}`,
+      role: kind === "agent" ? "developer" : null,
+      command: kind === "command" ? { program: "npm", arguments: ["test"], resultKind: "test" } : null,
+      requiredInputs: [],
+    };
+    const newDef: WorkflowDefinition = {
+      ...definition,
+      nodes: [...definition.nodes, newNode],
+    };
+    loadWorkflow(newDef);
+    setSelectedNode(newNode);
+    setMessage(`已添加新节点: ${newNode.label}`);
+  };
+
+  const handleLaunchRun = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!definition) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const run = await createMockDevelopmentTask(
+        {
+          title: taskTitle.trim(),
+          description: `基于工作流 ${definition.name} 发起的自动化运行。`,
+          acceptanceCriteria: ["测试通过", "审查批准"],
+        },
+        repoPath.trim(),
+        "test_then_review_retry"
+      );
+      setShowLaunchModal(false);
+      setMessage(`任务已成功创建并排队！Run ID: ${run.runId}`);
+      if (onLaunchTask) onLaunchTask(run.runId);
+    } catch (err) {
+      setMessage(`创建任务失败: ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="workflow-view">
       <div className="workflow-toolbar">
@@ -230,6 +332,13 @@ export function WorkflowEditor() {
           <button
             className="secondary"
             type="button"
+            onClick={() => setShowLaunchModal(true)}
+          >
+            基于此工作流执行 →
+          </button>
+          <button
+            className="secondary"
+            type="button"
             onClick={() => setShowVersions((val) => !val)}
           >
             版本历史 ({versions.length})
@@ -237,8 +346,16 @@ export function WorkflowEditor() {
         </div>
       </div>
 
+      <div className="workflow-quick-bar" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <small style={{ color: "#94a3b8" }}>快速添加节点：</small>
+        <button className="secondary-sm" type="button" onClick={() => handleAddNode("agent")}>+ Agent 节点</button>
+        <button className="secondary-sm" type="button" onClick={() => handleAddNode("command")}>+ Command 命令</button>
+        <button className="secondary-sm" type="button" onClick={() => handleAddNode("condition")}>+ Condition 条件分支</button>
+        <button className="secondary-sm" type="button" onClick={() => handleAddNode("human_approval")}>+ 人工确认节点</button>
+      </div>
+
       {message && (
-        <p role="status" className="info-banner" style={{ margin: "8px 0" }}>
+        <p role="status" className="info-banner" style={{ margin: "4px 0" }}>
           {message}
         </p>
       )}
@@ -284,7 +401,7 @@ export function WorkflowEditor() {
         {selectedNode && (
           <aside className="node-inspector">
             <div className="panel-heading">
-              <h3>节点详情</h3>
+              <h3>节点参数配置</h3>
               <button className="close-btn" type="button" onClick={() => setSelectedNode(null)}>
                 ✕
               </button>
@@ -298,34 +415,62 @@ export function WorkflowEditor() {
                 <dt>节点类型</dt>
                 <dd>{kindLabels[selectedNode.kind]}</dd>
               </div>
-              <div>
-                <dt>显示名称</dt>
-                <dd>{selectedNode.label}</dd>
-              </div>
-              {selectedNode.role && (
-                <div>
-                  <dt>绑定角色</dt>
-                  <dd><code>{selectedNode.role}</code></dd>
-                </div>
-              )}
-              {selectedNode.requiredInputs.length > 0 && (
-                <div>
-                  <dt>必需输入</dt>
-                  <dd>{selectedNode.requiredInputs.join(", ")}</dd>
-                </div>
-              )}
-              {selectedNode.command && (
-                <div>
-                  <dt>预置命令</dt>
-                  <dd>
-                    <code>
-                      {selectedNode.command.program} {selectedNode.command.arguments.join(" ")}
-                    </code>
-                    <small>结果类别: {selectedNode.command.resultKind}</small>
-                  </dd>
-                </div>
-              )}
             </dl>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveNodeEdit();
+              }}
+              style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "14px" }}
+            >
+              <label style={{ fontSize: "12px", color: "#94a3b8" }}>
+                显示名称
+                <input
+                  value={editLabel}
+                  onChange={(e) => setEditLabel(e.target.value)}
+                  style={{ marginTop: "4px" }}
+                />
+              </label>
+
+              <label style={{ fontSize: "12px", color: "#94a3b8" }}>
+                绑定角色 (Role)
+                <select
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value)}
+                  style={{ marginTop: "4px" }}
+                >
+                  <option value="">(无角色绑定)</option>
+                  <option value="developer">developer (开发 Agent)</option>
+                  <option value="tester">tester (测试 Agent)</option>
+                  <option value="reviewer">reviewer (审查 Agent)</option>
+                </select>
+              </label>
+
+              <label style={{ fontSize: "12px", color: "#94a3b8" }}>
+                必需输入项 (逗号分隔)
+                <input
+                  value={editInputs}
+                  onChange={(e) => setEditInputs(e.target.value)}
+                  style={{ marginTop: "4px" }}
+                  placeholder="如: candidateCommit, iteration"
+                />
+              </label>
+
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "8px" }}>
+                <button className="primary" type="submit">
+                  更新节点属性
+                </button>
+                <button
+                  className="secondary"
+                  type="button"
+                  style={{ color: "#f87171" }}
+                  onClick={() => handleDeleteNode(selectedNode.id)}
+                >
+                  删除节点
+                </button>
+              </div>
+            </form>
           </aside>
         )}
 
@@ -365,6 +510,49 @@ export function WorkflowEditor() {
           </aside>
         )}
       </div>
+
+      {showLaunchModal && (
+        <div className="modal-backdrop" onClick={() => setShowLaunchModal(false)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>基于工作流发起开发任务</h3>
+              <button className="close-btn" type="button" onClick={() => setShowLaunchModal(false)}>
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleLaunchRun} className="create-form">
+              <label>
+                任务标题
+                <input
+                  required
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                />
+              </label>
+              <label>
+                本地 Git 仓库路径
+                <input
+                  required
+                  placeholder="/Users/你的用户名/Projects/示例代码库"
+                  value={repoPath}
+                  onChange={(e) => setRepoPath(e.target.value)}
+                />
+              </label>
+              <p className="form-hint">
+                系统将在独立 Git Worktree 中执行当前工作流，自动在测试失败或 Review 拒绝时触发返工。
+              </p>
+              <div className="modal-actions">
+                <button className="secondary" type="button" onClick={() => setShowLaunchModal(false)}>
+                  取消
+                </button>
+                <button className="primary" type="submit" disabled={busy}>
+                  {busy ? "排队中…" : "立即启动执行"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

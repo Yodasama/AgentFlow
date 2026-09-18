@@ -306,3 +306,41 @@ pub struct AccountStatusSummary {
     pub locked_by_attempt_id: Option<Uuid>,
     pub provider: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleRecord {
+    pub id: String,
+    pub name: String,
+    pub cron: String,
+    pub timezone: String,
+    pub target_workflow_name: String,
+    pub active: bool,
+    pub overlap_policy: String,
+    pub last_run_at: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MilestoneRecord {
+    pub id: String,
+    pub goal_id: String,
+    pub title: String,
+    pub completed: bool,
+    pub sort_order: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GoalRecord {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub status: String,
+    pub deadline: String,
+    pub actions_used: u32,
+    pub actions_budget: u32,
+    pub created_at: String,
+    pub milestones: Vec<MilestoneRecord>,
+}

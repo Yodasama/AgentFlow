@@ -1,99 +1,92 @@
-import { useState } from "react";
-
-interface Milestone {
-  id: string;
-  title: string;
-  completed: boolean;
-}
-
-interface GoalItem {
-  id: string;
-  title: string;
-  description: string;
-  status: "in_progress" | "paused" | "completed";
-  deadline: string;
-  actionsUsed: number;
-  actionsBudget: number;
-  milestones: Milestone[];
-}
-
-const initialGoals: GoalItem[] = [
-  {
-    id: "goal-1",
-    title: "构建端到端高可靠 Agent 本地开发闭环",
-    description: "实现通过本地独立 runner 驱动 Agent 完成任务分析、代码修改、真实 Git Checkpoint 生成、自动化测试与 Review 返工。",
-    status: "in_progress",
-    deadline: "2026-10-01",
-    actionsUsed: 14,
-    actionsBudget: 50,
-    milestones: [
-      { id: "m-1", title: "Git Worktree 隔离与 Checkpoint 幂等留痕 (P5)", completed: true },
-      { id: "m-2", title: "独立 Runner 进程、双流重定向与超时控制 (P3)", completed: true },
-      { id: "m-3", title: "工作流不可变版本与人工审批机制 (P6)", completed: true },
-      { id: "m-4", title: "React Flow 可视化工作流设计器 (P9)", completed: true },
-      { id: "m-5", title: "真实 Codex / Claude CLI 生产适配器对接 (P4)", completed: false },
-    ],
-  },
-  {
-    id: "goal-2",
-    title: "本地 Agent 故障恢复矩阵与数据自愈",
-    description: "模拟宿主进程 SIGKILL、睡眠唤醒、磁盘写满与断网，保证事务对账与零双开。",
-    status: "in_progress",
-    deadline: "2026-10-15",
-    actionsUsed: 8,
-    actionsBudget: 30,
-    milestones: [
-      { id: "m-21", title: "prepared 阶段宿主异常退出自动恢复测试", completed: true },
-      { id: "m-22", title: "未知状态保留资源锁与防重复领取", completed: true },
-      { id: "m-23", title: "崩溃恢复控制中心与手动强制干预", completed: false },
-    ],
-  },
-];
+import { useEffect, useState, useCallback } from "react";
+import {
+  listGoals,
+  saveGoal,
+  toggleMilestone,
+  deleteGoal,
+  type GoalRecord,
+} from "./api";
 
 export function GoalsView() {
-  const [goals, setGoals] = useState<GoalItem[]>(initialGoals);
+  const [goals, setGoals] = useState<GoalRecord[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const [newBudget, setNewBudget] = useState(20);
+  const [newDeadline, setNewDeadline] = useState("2026-10-30");
+  const [newBudget, setNewBudget] = useState(25);
 
-  const toggleMilestone = (goalId: string, milestoneId: string) => {
-    setGoals((prev) =>
-      prev.map((g) => {
-        if (g.id !== goalId) return g;
-        const updatedMilestones = g.milestones.map((m) =>
-          m.id === milestoneId ? { ...m, completed: !m.completed } : m
-        );
-        const allDone = updatedMilestones.every((m) => m.completed);
-        return {
-          ...g,
-          milestones: updatedMilestones,
-          status: allDone ? "completed" : g.status,
-        };
-      })
-    );
+  const loadGoals = useCallback(async () => {
+    try {
+      const list = await listGoals();
+      setGoals(list);
+    } catch (err) {
+      setMessage(`加载长期目标失败: ${String(err)}`);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadGoals();
+  }, [loadGoals]);
+
+  const handleToggleMilestone = async (milestoneId: string) => {
+    setBusy(true);
+    try {
+      await toggleMilestone(milestoneId);
+      await loadGoals();
+    } catch (err) {
+      setMessage(`更新里程碑失败: ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleAddGoal = (e: React.FormEvent) => {
+  const handleDeleteGoal = async (id: string) => {
+    setBusy(true);
+    try {
+      await deleteGoal(id);
+      await loadGoals();
+      setMessage("长期目标已从数据库移除。");
+    } catch (err) {
+      setMessage(`删除目标失败: ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAddGoal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-    const newGoal: GoalItem = {
-      id: `goal-${Date.now()}`,
-      title: newTitle.trim(),
-      description: newDesc.trim(),
-      status: "in_progress",
-      deadline: "2026-11-01",
-      actionsUsed: 0,
-      actionsBudget: Number(newBudget) || 20,
-      milestones: [
-        { id: `m-${Date.now()}-1`, title: "阶段一：需求拆解与架构设计", completed: false },
-        { id: `m-${Date.now()}-2`, title: "阶段二：核心功能实现与测试", completed: false },
-      ],
-    };
-    setGoals((prev) => [newGoal, ...prev]);
-    setShowModal(false);
-    setNewTitle("");
-    setNewDesc("");
+    setBusy(true);
+    try {
+      const goalId = `goal-${Date.now()}`;
+      const newGoal: GoalRecord = {
+        id: goalId,
+        title: newTitle.trim(),
+        description: newDesc.trim(),
+        status: "in_progress",
+        deadline: newDeadline.trim() || "2026-11-01",
+        actionsUsed: 0,
+        actionsBudget: Number(newBudget) || 20,
+        createdAt: new Date().toISOString(),
+        milestones: [
+          { id: `m-${Date.now()}-1`, goalId, title: "阶段一：需求拆解与架构设计", completed: false, sortOrder: 1 },
+          { id: `m-${Date.now()}-2`, goalId, title: "阶段二：核心功能实现与单元验证", completed: false, sortOrder: 2 },
+          { id: `m-${Date.now()}-3`, goalId, title: "阶段三：端到端闭环与成果验收", completed: false, sortOrder: 3 },
+        ],
+      };
+      await saveGoal(newGoal);
+      await loadGoals();
+      setShowModal(false);
+      setNewTitle("");
+      setNewDesc("");
+      setMessage(`长期目标 ${newGoal.title} 已持久化到 SQLite。`);
+    } catch (err) {
+      setMessage(`创建目标失败: ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -102,13 +95,19 @@ export function GoalsView() {
         <div>
           <h2>长期目标与里程碑 (P10)</h2>
           <p className="subtitle">
-            针对需要跨多次运行、持续演进的大型任务设置宏观目标、里程碑检查点与总执行预算。
+            跨多个任务与 Attempt 的宏观业务目标。通过 SQLite 持久化管理里程碑检查点与动作预算（Action Budget）。
           </p>
         </div>
         <button className="primary" type="button" onClick={() => setShowModal(true)}>
           + 新建长期目标
         </button>
       </div>
+
+      {message && (
+        <p role="status" className="info-banner">
+          {message}
+        </p>
+      )}
 
       <div className="goals-grid">
         {goals.map((g) => {
@@ -123,9 +122,20 @@ export function GoalsView() {
                   <h3>{g.title}</h3>
                   <p className="goal-desc">{g.description}</p>
                 </div>
-                <span className={`state-tag ${g.status}`}>
-                  {g.status === "completed" ? "已完成" : g.status === "paused" ? "已暂停" : "推进中"}
-                </span>
+                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                  <span className={`state-tag ${g.status}`}>
+                    {g.status === "completed" ? "已完成" : g.status === "paused" ? "已暂停" : "推进中"}
+                  </span>
+                  <button
+                    className="close-btn"
+                    type="button"
+                    title="删除目标"
+                    disabled={busy}
+                    onClick={() => void handleDeleteGoal(g.id)}
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               <div className="progress-section">
@@ -147,7 +157,8 @@ export function GoalsView() {
                     <input
                       type="checkbox"
                       checked={m.completed}
-                      onChange={() => toggleMilestone(g.id, m.id)}
+                      disabled={busy}
+                      onChange={() => void handleToggleMilestone(m.id)}
                     />
                     <span className={m.completed ? "done" : ""}>{m.title}</span>
                   </label>
@@ -166,7 +177,7 @@ export function GoalsView() {
         <div className="modal-backdrop" onClick={() => setShowModal(false)}>
           <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>新建长期目标</h3>
+              <h3>新建长期目标 (SQLite 持久化)</h3>
               <button className="close-btn" type="button" onClick={() => setShowModal(false)}>
                 ✕
               </button>
@@ -192,6 +203,14 @@ export function GoalsView() {
                 />
               </label>
               <label>
+                预期交付期限
+                <input
+                  type="date"
+                  value={newDeadline}
+                  onChange={(e) => setNewDeadline(e.target.value)}
+                />
+              </label>
+              <label>
                 动作预算上限 (Action Budget)
                 <input
                   type="number"
@@ -205,8 +224,8 @@ export function GoalsView() {
                 <button className="secondary" type="button" onClick={() => setShowModal(false)}>
                   取消
                 </button>
-                <button className="primary" type="submit">
-                  创建目标
+                <button className="primary" type="submit" disabled={busy}>
+                  {busy ? "保存中…" : "创建并写入 SQLite"}
                 </button>
               </div>
             </form>
