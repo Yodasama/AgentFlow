@@ -7,7 +7,8 @@ import {
   type RunState,
   type GoalRecord,
 } from "./api";
-import { IconFolder, IconZap } from "./icons";
+import { IconFolder, IconZap, IconSparkles } from "./icons";
+import { DrawerSelect } from "./DrawerSelect";
 
 const stateLabels: Record<RunState, string> = {
   queued: "排队中",
@@ -298,33 +299,49 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
             <form onSubmit={handleCreate} className="modal-body-form">
               {/* Project Linking Dropdown */}
               <label>
-                所属立项规划 (可选，重任务建议关联)
-                <select
+                <span>所属立项规划 (可选，重任务建议关联)</span>
+                <DrawerSelect
                   value={selectedPlanId}
-                  onChange={(e) => setSelectedPlanId(e.target.value)}
-                >
-                  <option value="">无关联 (独立轻量任务)</option>
-                  {availablePlans.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      [立项规划] {p.title}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setSelectedPlanId(val)}
+                  options={[
+                    {
+                      value: "",
+                      label: "无关联 (独立轻量任务)",
+                      description: "快速创建，不挂靠任何长期立项规划",
+                      icon: <IconZap size={13} stroke="#787774" />,
+                    },
+                    ...availablePlans.map((p) => ({
+                      value: p.id,
+                      label: p.title,
+                      description: `关联规划：${p.title}`,
+                      icon: <IconFolder size={13} stroke="#787774" />,
+                      badge: "立项规划",
+                    })),
+                  ]}
+                />
               </label>
 
               <label>
-                任务类型
-                <select
+                <span>任务执行模式</span>
+                <DrawerSelect
                   value={taskMode}
-                  onChange={(e) =>
-                    setTaskMode(e.target.value as typeof taskMode)
-                  }
-                >
-                  <option value="development">
-                    标准开发闭环 (需求分析、代码编写、单元测试与代码审查)
-                  </option>
-                  <option value="single">快速单步运行 (直接执行命令或脚本)</option>
-                </select>
+                  onChange={(val) => setTaskMode(val as typeof taskMode)}
+                  options={[
+                    {
+                      value: "development",
+                      label: "标准开发闭环",
+                      description: "需求分析、代码编写、单元测试与代码审查全套闭环流程",
+                      icon: <IconSparkles size={13} stroke="#787774" />,
+                      badge: "推荐",
+                    },
+                    {
+                      value: "single",
+                      label: "快速单步运行",
+                      description: "极速模式，直接执行指定命令或轻量仿真脚本",
+                      icon: <IconZap size={13} stroke="#787774" />,
+                    },
+                  ]}
+                />
               </label>
 
               <label>

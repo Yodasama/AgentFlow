@@ -380,20 +380,21 @@ export function AgentManagerView() {
             </p>
 
             <form onSubmit={handleAddRole} className="modal-body-form" style={{ marginTop: "10px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "8px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "10px" }}>
                 <label>
-                  图标类型
-                  <select
+                  <span>图标类型</span>
+                  <DrawerSelect
                     value={newIcon}
-                    onChange={(e) => setNewIcon(e.target.value)}
-                  >
-                    <option value="code">代码 (Code)</option>
-                    <option value="search">审查 (Search)</option>
-                    <option value="test">测试 (Test)</option>
-                    <option value="ruler">架构 (Ruler)</option>
-                    <option value="shield">安全 (Shield)</option>
-                    <option value="zap">通用 (Zap)</option>
-                  </select>
+                    onChange={(val) => setNewIcon(val)}
+                    options={[
+                      { value: "code", label: "代码", description: "开发与编写", icon: <RoleIcon icon="code" size={14} /> },
+                      { value: "search", label: "审查", description: "安全与规范审计", icon: <RoleIcon icon="search" size={14} /> },
+                      { value: "test", label: "测试", description: "测试与回归套件", icon: <RoleIcon icon="test" size={14} /> },
+                      { value: "ruler", label: "架构", description: "蓝图与任务分解", icon: <RoleIcon icon="ruler" size={14} /> },
+                      { value: "shield", label: "安全", description: "边界防护与防御", icon: <RoleIcon icon="shield" size={14} /> },
+                      { value: "zap", label: "通用", description: "轻量快速执行", icon: <RoleIcon icon="zap" size={14} /> },
+                    ]}
+                  />
                 </label>
                 <label>
                   角色名称
