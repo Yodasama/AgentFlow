@@ -2661,6 +2661,7 @@ h1 {
   transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
   overflow: hidden;
   z-index: 15;
+  user-select: none;
 }
 
 .chat-history-sidebar.collapsed {
@@ -2670,25 +2671,31 @@ h1 {
   pointer-events: none;
 }
 
-/* History Sidebar Top Horizontal Action (Consistent with Nav Button) */
+/* History Sidebar Top Horizontal Action (42px baseline aligned with gpt-header-bar) */
 .history-top-actions {
-  padding: 12px 10px 6px;
+  height: 42px;
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 0 10px;
   display: flex;
   align-items: center;
+  border-bottom: 1px solid var(--apple-border);
   flex-shrink: 0;
+  background: var(--apple-bg);
 }
 
 .history-new-chat-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   width: 100%;
-  padding: 8px 10px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--apple-border);
   border-radius: var(--apple-radius-sm);
   background: #ffffff;
   color: var(--apple-text-primary);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
@@ -2696,29 +2703,68 @@ h1 {
 }
 
 .history-new-chat-btn:hover {
-  background: var(--apple-card);
+  background: #ffffff;
   border-color: #d1d1d6;
-  color: #111111;
+  color: #000000;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 .history-new-chat-btn:active {
-  transform: scale(0.98);
+  transform: scale(0.985);
+  background: var(--apple-card-subtle);
+}
+
+.history-new-chat-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.history-shortcut-badge {
+  font-size: 9.5px;
+  font-family: var(--font-stack);
+  font-weight: 500;
+  color: var(--apple-text-tertiary);
+  background: var(--apple-card-subtle);
+  border: 1px solid var(--apple-border-light);
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+/* History Sessions List */
+.history-sessions-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-sessions-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.history-sessions-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
 }
 
 /* History Group Sections */
 .history-group-section {
   display: flex;
   flex-direction: column;
-  margin-bottom: 6px;
 }
 
 .history-group-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--apple-text-tertiary);
-  padding: 8px 8px 4px;
-  letter-spacing: 0.01em;
+  padding: 8px 8px 3px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  user-select: none;
 }
 
 .history-group-items {
@@ -2727,28 +2773,12 @@ h1 {
   gap: 2px;
 }
 
-.history-sessions-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 10px 14px;
-  display: flex;
-  flex-direction: column;
-}
-
-.history-sessions-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.history-sessions-list::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 4px;
-}
-
+/* History Session Item */
 .history-session-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px;
+  gap: 8px;
+  padding: 6px 8px;
   border-radius: var(--apple-radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
@@ -2757,6 +2787,7 @@ h1 {
   text-align: left;
   width: 100%;
   box-sizing: border-box;
+  user-select: none;
 }
 
 .history-session-item:hover {
@@ -2766,9 +2797,24 @@ h1 {
 .history-session-item.active {
   background: #ffffff;
   border-color: var(--apple-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.025);
+}
+
+.session-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--apple-text-tertiary);
+  flex-shrink: 0;
+  transition: color 0.12s ease;
+}
+
+.history-session-item:hover .session-item-icon {
+  color: var(--apple-text-secondary);
+}
+
+.history-session-item.active .session-item-icon {
   color: #111111;
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .history-session-info {
@@ -2776,35 +2822,48 @@ h1 {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1.5px;
 }
 
 .history-session-title {
-  font-size: 12.5px;
-  color: #18181b;
+  font-size: 12px;
+  color: var(--apple-text-secondary);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.25;
+  transition: color 0.12s ease;
+}
+
+.history-session-item:hover .history-session-title {
+  color: var(--apple-text-primary);
+}
+
+.history-session-item.active .history-session-title {
+  color: #111111;
+  font-weight: 600;
 }
 
 .history-session-date {
-  font-size: 10.5px;
-  color: #a1a1a6;
+  font-size: 10px;
+  color: var(--apple-text-tertiary);
+  line-height: 1.1;
 }
 
 .history-delete-btn {
   opacity: 0;
   border: none;
   background: transparent;
-  color: #a1a1a6;
-  padding: 4px;
+  color: var(--apple-text-tertiary);
+  padding: 3px;
   border-radius: 4px;
   cursor: pointer;
   transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .history-session-item:hover .history-delete-btn {
@@ -2812,8 +2871,37 @@ h1 {
 }
 
 .history-delete-btn:hover {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.08);
+  color: var(--apple-red);
+  background: var(--apple-red-bg);
+}
+
+/* History Sidebar Footer */
+.history-sidebar-footer {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-top: 1px solid var(--apple-border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--apple-text-tertiary);
+  flex-shrink: 0;
+  background: var(--apple-bg);
+  user-select: none;
+}
+
+/* History Empty State */
+.history-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 12px;
+  gap: 8px;
+  color: var(--apple-text-tertiary);
+  font-size: 11.5px;
+  text-align: center;
 }
 
 /* Chat Main Column */
@@ -2833,16 +2921,17 @@ h1 {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--apple-radius-sm);
+  border: 1px solid var(--apple-border);
   background: #ffffff;
-  color: #48484a;
+  color: var(--apple-text-secondary);
   cursor: pointer;
   transition: all 0.12s ease;
 }
 
 .chat-toggle-sidebar-btn:hover {
-  background: #f4f4f5;
+  background: var(--apple-card-subtle);
+  border-color: #d1d1d6;
   color: #111111;
 }
 
@@ -2850,12 +2939,12 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 22px;
+  padding: 0 16px;
   height: 42px;
   min-height: 42px;
   box-sizing: border-box;
   background: #ffffff;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid var(--apple-border);
   z-index: 10;
 }
 

@@ -33,6 +33,7 @@ import { ProviderModal } from "./ProviderModal";
 import { DrawerSelect, type DrawerSelectOption } from "./DrawerSelect";
 import {
   IconSparkles,
+  IconChat,
   IconFolder,
   IconTasks,
   IconPlanning,
@@ -275,6 +276,18 @@ export function ChatView({
   useEffect(() => {
     scrollToBottom();
   }, [messages, busy]);
+
+  // Global hotkey: Cmd+N / Ctrl+N to create a new session
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        handleNewSession();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sessions, activeWorkspace, selectedModel, selectedReasoning]);
 
   // Session switching
   useEffect(() => {
@@ -874,46 +887,66 @@ export function ChatView({
             type="button"
             className="history-new-chat-btn"
             onClick={handleNewSession}
-            title="开启新对话"
+            title="开启新对话 (⌘N)"
           >
-            <IconPlus size={14} stroke="currentColor" />
-            <span>新对话</span>
+            <div className="history-new-chat-left">
+              <IconPlus size={13} stroke="currentColor" />
+              <span>新对话</span>
+            </div>
+            <kbd className="history-shortcut-badge">⌘N</kbd>
           </button>
         </div>
 
         {/* Chronological History List Grouped by Time */}
         <div className="history-sessions-list">
-          {groupedSessions.map((group) => (
-            <div key={group.label} className="history-group-section">
-              <div className="history-group-label">{group.label}</div>
-              <div className="history-group-items">
-                {group.items.map((s) => {
-                  const isActive = s.id === activeSessionId;
-                  return (
-                    <div
-                      key={s.id}
-                      className={`history-session-item ${isActive ? "active" : ""}`}
-                      onClick={() => setActiveSessionId(s.id)}
-                    >
-                      <div className="history-session-info">
-                        <span className="history-session-title">{s.title || "新会话"}</span>
-                        <span className="history-session-date">{formatSessionTime(s.updatedAt)}</span>
-                      </div>
-                      <button
-                        type="button"
-                        className="history-delete-btn"
-                        onClick={(e) => handleDeleteSession(s.id, e)}
-                        title="删除此会话"
-                      >
-                        <IconTrash size={12} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+          {sessions.length === 0 ? (
+            <div className="history-empty-state">
+              <IconChat size={20} stroke="currentColor" />
+              <span>暂无历史对话</span>
             </div>
-          ))}
+          ) : (
+            groupedSessions.map((group) => (
+              <div key={group.label} className="history-group-section">
+                <div className="history-group-label">{group.label}</div>
+                <div className="history-group-items">
+                  {group.items.map((s) => {
+                    const isActive = s.id === activeSessionId;
+                    return (
+                      <div
+                        key={s.id}
+                        className={`history-session-item ${isActive ? "active" : ""}`}
+                        onClick={() => setActiveSessionId(s.id)}
+                      >
+                        <span className="session-item-icon">
+                          <IconChat size={13} stroke="currentColor" />
+                        </span>
+                        <div className="history-session-info">
+                          <span className="history-session-title">{s.title || "新会话"}</span>
+                          <span className="history-session-date">{formatSessionTime(s.updatedAt)}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="history-delete-btn"
+                          onClick={(e) => handleDeleteSession(s.id, e)}
+                          title="删除此会话"
+                        >
+                          <IconTrash size={12} stroke="currentColor" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
         </div>
+
+        {/* Discreet Sidebar Footer */}
+        {sessions.length > 0 && (
+          <div className="history-sidebar-footer">
+            <span>{sessions.length} 个历史对话</span>
+          </div>
+        )}
       </aside>
 
       {/* Main Chat Column */}
@@ -945,15 +978,17 @@ export function ChatView({
                 清空当前对话
               </button>
             )}
-            <button
-              type="button"
-              className="apple-btn-secondary"
-              onClick={handleNewSession}
-              style={{ fontSize: "12px", padding: "4px 9px", display: "inline-flex", alignItems: "center", gap: "4px" }}
-            >
-              <IconPlus size={12} />
-              <span>新建会话</span>
-            </button>
+            {!showHistory && (
+              <button
+                type="button"
+                className="apple-btn-secondary"
+                onClick={handleNewSession}
+                style={{ fontSize: "12px", padding: "4px 9px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+              >
+                <IconPlus size={12} stroke="currentColor" />
+                <span>新建会话</span>
+              </button>
+            )}
           </div>
         </div>
 
