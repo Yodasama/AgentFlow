@@ -175,6 +175,20 @@ export function PlanningView({ onNavigateToRun, onRefreshRuns }: Props) {
       setDispatchedMap(updated);
       localStorage.setItem("agentflow_dispatched_milestones_v1", JSON.stringify(updated));
 
+      // Also record project link for task views
+      try {
+        const linkKey = "agentflow_task_project_links_v1";
+        const existingLinks = JSON.parse(localStorage.getItem(linkKey) || "{}");
+        existingLinks[created.runId] = {
+          planId: plan.id,
+          planTitle: plan.title,
+          milestoneTitle,
+        };
+        localStorage.setItem(linkKey, JSON.stringify(existingLinks));
+      } catch {
+        // ignore
+      }
+
       await onRefreshRuns();
       setMessage(`阶段【${milestoneTitle}】已成功派发为任务！Run ID: ${created.runId.slice(0, 8)}`);
       // Navigate to task detail directly

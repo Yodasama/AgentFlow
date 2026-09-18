@@ -9,7 +9,7 @@ import { AgentManagerView } from "./AgentManagerView";
 import { SchedulesView } from "./SchedulesView";
 import { PlanningView } from "./PlanningView";
 
-const navigation = ["任务", "Agent", "定时任务", "项目规划"];
+const navigation = ["任务", "项目规划", "定时任务"];
 
 export function App() {
   const [activeTab, setActiveTab] = useState<string>("任务");
@@ -57,9 +57,9 @@ export function App() {
 
   return (
     <div className="shell">
-      {/* Apple-Style Minimalist Sidebar */}
+      {/* Permanently Fixed Apple-Style Sidebar */}
       <aside className="sidebar">
-        {/* Artistic Typographic Brand Header without square avatar */}
+        {/* Artistic Typographic Brand Header */}
         <div className="brand">
           <div className="brand-typography">
             <span className="brand-title">AgentFlow</span>
@@ -68,6 +68,7 @@ export function App() {
           <p className="brand-sub">本地智能工程运行时</p>
         </div>
 
+        {/* Main Navigation: 任务, 项目规划, 定时任务 */}
         <nav aria-label="主导航">
           {navigation.map((item) => (
             <button
@@ -77,13 +78,24 @@ export function App() {
               onClick={() => handleTabClick(item)}
             >
               {item === "任务" && <span className="nav-icon">📋</span>}
-              {item === "Agent" && <span className="nav-icon">🤖</span>}
-              {item === "定时任务" && <span className="nav-icon">⏰</span>}
               {item === "项目规划" && <span className="nav-icon">🧭</span>}
+              {item === "定时任务" && <span className="nav-icon">⏰</span>}
               <span>{item}</span>
             </button>
           ))}
         </nav>
+
+        {/* Agent Management pinned at the very bottom of sidebar */}
+        <div className="sidebar-bottom">
+          <button
+            className={activeTab === "Agent" && !selectedRunId ? "active" : ""}
+            type="button"
+            onClick={() => handleTabClick("Agent")}
+          >
+            <span className="nav-icon">🤖</span>
+            <span>Agent 角色管理</span>
+          </button>
+        </div>
       </aside>
 
       {/* Main Content Area */}
@@ -94,7 +106,7 @@ export function App() {
           </div>
         )}
 
-        {/* If a task is selected, show Task Detail View (Mindmap Canvas + Execution Status) */}
+        {/* If a task is selected, show Task Detail View */}
         {selectedRunId ? (
           <TaskDetailView
             runId={selectedRunId}
@@ -112,7 +124,12 @@ export function App() {
               />
             )}
 
-            {activeTab === "Agent" && <AgentManagerView />}
+            {activeTab === "项目规划" && (
+              <PlanningView
+                onNavigateToRun={handleSelectRun}
+                onRefreshRuns={refreshRuns}
+              />
+            )}
 
             {activeTab === "定时任务" && (
               <SchedulesView
@@ -121,12 +138,7 @@ export function App() {
               />
             )}
 
-            {activeTab === "项目规划" && (
-              <PlanningView
-                onNavigateToRun={handleSelectRun}
-                onRefreshRuns={refreshRuns}
-              />
-            )}
+            {activeTab === "Agent" && <AgentManagerView />}
           </>
         )}
       </main>

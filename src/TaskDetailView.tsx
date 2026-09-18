@@ -28,6 +28,8 @@ import {
   type RunDetail,
   type RunState,
 } from "./api";
+import { loadAgentRoles, type AgentRoleConfig } from "./AgentManagerView";
+import { getTaskProjectLinks } from "./TasksListView";
 
 const stateLabels: Record<RunState, string> = {
   queued: "排队中",
@@ -198,12 +200,36 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
+  // Available Agent Roles & Linked Project
+  const [availableRoles, setAvailableRoles] = useState<AgentRoleConfig[]>(loadAgentRoles);
+  const linkedProject = getTaskProjectLinks()[runId];
+
   // New Node Modal
   const [showAddNodeModal, setShowAddNodeModal] = useState(false);
   const [newNodeRole, setNewNodeRole] = useState("开发编写");
   const [newNodeModel, setNewNodeModel] = useState("Claude 3.5 Sonnet");
-  const [newNodeReasoning, setNewNodeReasoning] = useState("中等");
+  const [newNodeReasoning, setNewNodeReasoning] = useState("深度");
   const [newNodeLabel, setNewNodeLabel] = useState("");
+
+  const handleOpenAddNodeModal = () => {
+    const currentRoles = loadAgentRoles();
+    setAvailableRoles(currentRoles);
+    if (currentRoles.length > 0) {
+      setNewNodeRole(currentRoles[0].roleName);
+      setNewNodeModel(currentRoles[0].defaultModel);
+      setNewNodeReasoning(currentRoles[0].defaultReasoning);
+    }
+    setShowAddNodeModal(true);
+  };
+
+  const handleRoleSelectChange = (roleName: string) => {
+    setNewNodeRole(roleName);
+    const found = availableRoles.find((r) => r.roleName === roleName);
+    if (found) {
+      setNewNodeModel(found.defaultModel);
+      setNewNodeReasoning(found.defaultReasoning);
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -588,7 +614,19 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
           ← 返回任务列表
         </button>
         <div className="task-title-group">
-          <h1>{detail.title}</h1>
+          <div className="task-breadcrumb">
+            {linkedProject ? (
+              <span className="breadcrumb-project" title={`所属立项：${linkedProject.planTitle}`}>
+                📁 {linkedProject.planTitle}
+              </span>
+            ) : (
+              <span className="breadcrumb-light">
+                ⚡️ 独立轻任务
+              </span>
+            )}
+            <span className="breadcrumb-sep">›</span>
+            <span className="breadcrumb-current">{detail.title}</span>
+          </div>
           <span className={`apple-pill ${detail.runState}`}>
             {stateLabels[detail.runState]}
           </span>
@@ -631,7 +669,7 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
           <button
             className="apple-btn-secondary"
             type="button"
-            onClick={() => setShowAddNodeModal(true)}
+            onClick={handleOpenAddNodeModal}
           >
             + 添加节点
           </button>
@@ -1008,13 +1046,13 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
                 功能担任 (Role)
                 <select
                   value={newNodeRole}
-                  onChange={(e) => setNewNodeRole(e.target.value)}
+                  onChange={(e) => handleRoleSelectChange(e.target.value)}
                 >
-                  <option value="开发编写">开发编写 (Developer)</option>
-                  <option value="代码审查">代码审查 (Reviewer)</option>
-                  <option value="测试验证">测试验证 (Tester)</option>
-                  <option value="需求拆解">需求拆解 (Architect)</option>
-                  <option value="人工决策">人工决策 (Approval)</option>
+                  {availableRoles.map((r) => (
+                    <option key={r.id} value={r.roleName}>
+                      {r.icon} {r.roleName} ({r.description.slice(0, 16)}…)
+                    </option>
+                  ))}
                 </select>
               </label>
 
