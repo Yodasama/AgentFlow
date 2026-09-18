@@ -1,0 +1,855 @@
+import { useCallback, useEffect, useState } from "react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  Handle,
+  Position,
+  useNodesState,
+  useEdgesState,
+  type Node,
+  type Edge,
+  type NodeProps,
+  MarkerType,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import {
+  cancelRun,
+  createMockTask,
+  getAttemptLogs,
+  getCheckpointDiff,
+  getRun,
+  listCheckpoints,
+  submitDevelopmentApproval,
+  getDevelopmentRun,
+  type AttemptLogs,
+  type CheckpointRecord,
+  type DevelopmentRunSnapshot,
+  type RunDetail,
+  type RunState,
+} from "./api";
+
+const stateLabels: Record<RunState, string> = {
+  queued: "排队中",
+  running: "运行中",
+  waiting_input: "等待人工决策",
+  interrupted: "已中断",
+  succeeded: "已完成",
+  failed: "执行失败",
+  cancelled: "已取消",
+};
+
+interface MindMapNodeData {
+  label: string;
+  role: string;
+  model: string;
+  reasoning: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "waiting";
+  description?: string;
+  [key: string]: unknown;
+}
+
+// Apple Mind-Map Custom Node Component
+function MindMapNode({ data, selected }: NodeProps) {
+  const nodeData = data as unknown as MindMapNodeData;
+  const statusColors = {
+    pending: { bg: "#f5f5f7", text: "#86868b", border: "#e5e5ea" },
+    running: { bg: "#e8f2ff", text: "#0071e3", border: "#0071e3" },
+    succeeded: { bg: "#eafaf1", text: "#24a159", border: "#24a159" },
+    failed: { bg: "#fdf0ed", text: "#e03e1a", border: "#e03e1a" },
+    waiting: { bg: "#fef6e7", text: "#d97706", border: "#d97706" },
+  };
+  const color = statusColors[nodeData.status] || statusColors.pending;
+
+  return (
+    <div
+      style={{
+        background: "#ffffff",
+        border: `1.5px solid ${selected ? "#0071e3" : color.border}`,
+        borderRadius: "12px",
+        padding: "12px 14px",
+        minWidth: "200px",
+        boxShadow: selected
+          ? "0 0 0 3px rgba(0, 113, 227, 0.15), 0 4px 14px rgba(0,0,0,0.06)"
+          : "0 2px 8px rgba(0,0,0,0.04)",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
+      }}
+    >
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ background: "#86868b", width: 7, height: 7 }}
+      />
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "6px",
+        }}
+      >
+        <span
+          style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            color: color.text,
+            background: color.bg,
+            padding: "2px 6px",
+            borderRadius: "5px",
+          }}
+        >
+          {nodeData.role}
+        </span>
+        <span
+          style={{
+            fontSize: "10px",
+            color: "#86868b",
+            background: "#f5f5f7",
+            padding: "2px 5px",
+            borderRadius: "4px",
+          }}
+        >
+          推理: {nodeData.reasoning}
+        </span>
+      </div>
+
+      <div
+        style={{
+          fontSize: "13px",
+          fontWeight: 600,
+          color: "#1d1d1f",
+          marginBottom: "6px",
+        }}
+      >
+        {nodeData.label}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          fontSize: "11px",
+          color: "#86868b",
+          borderTop: "1px solid #f2f2f5",
+          paddingTop: "6px",
+        }}
+      >
+        <span>🤖 {nodeData.model}</span>
+        <span style={{ fontSize: "10px", color: color.text }}>
+          {nodeData.status === "running"
+            ? "运行中"
+            : nodeData.status === "succeeded"
+            ? "已完成"
+            : nodeData.status === "failed"
+            ? "异常"
+            : nodeData.status === "waiting"
+            ? "待处理"
+            : "就绪"}
+        </span>
+      </div>
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ background: "#86868b", width: 7, height: 7 }}
+      />
+    </div>
+  );
+}
+
+const nodeTypes = { mindMapNode: MindMapNode };
+
+interface Props {
+  runId: string;
+  onBack: () => void;
+  onRefreshList: () => Promise<void>;
+}
+
+export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
+  const [detail, setDetail] = useState<RunDetail | null>(null);
+  const [snapshot, setSnapshot] = useState<DevelopmentRunSnapshot | null>(null);
+  const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
+  const [logs, setLogs] = useState<AttemptLogs | null>(null);
+  const [diffText, setDiffText] = useState<string | null>(null);
+  const [activeLogTab, setActiveLogTab] = useState<"stdout" | "stderr">("stdout");
+  const [approvalComment, setApprovalComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Canvas Node & Edge State
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // New Node Modal
+  const [showAddNodeModal, setShowAddNodeModal] = useState(false);
+  const [newNodeRole, setNewNodeRole] = useState("开发编写");
+  const [newNodeModel, setNewNodeModel] = useState("Claude 3.5 Sonnet");
+  const [newNodeReasoning, setNewNodeReasoning] = useState("中等");
+  const [newNodeLabel, setNewNodeLabel] = useState("");
+
+  const loadData = useCallback(async () => {
+    try {
+      const runData = await getRun(runId);
+      setDetail(runData);
+
+      if (runData.workflowKind === "development_workflow") {
+        try {
+          const snap = await getDevelopmentRun(runId);
+          setSnapshot(snap);
+        } catch {
+          // ignore
+        }
+      }
+
+      try {
+        const cpList = await listCheckpoints(runId);
+        setCheckpoints(cpList);
+        if (cpList.length > 0 && !diffText) {
+          const latestDiff = await getCheckpointDiff(cpList[cpList.length - 1].checkpointId);
+          setDiffText(latestDiff);
+        }
+      } catch {
+        // ignore
+      }
+
+      if (runData.attemptId) {
+        try {
+          const logData = await getAttemptLogs(runId, runData.attemptId);
+          setLogs(logData);
+        } catch {
+          // ignore
+        }
+      }
+    } catch (err) {
+      setError(String(err));
+    }
+  }, [runId, diffText]);
+
+  useEffect(() => {
+    void loadData();
+    const interval = setInterval(() => {
+      void loadData();
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [loadData]);
+
+  // Generate or update mindmap nodes based on task and execution progress
+  useEffect(() => {
+    if (!detail) return;
+
+    const phase = snapshot?.flow.phase;
+    const isDev = detail.workflowKind === "development_workflow";
+
+    const defaultNodes: Node[] = isDev
+      ? [
+          {
+            id: "node-1",
+            type: "mindMapNode",
+            position: { x: 50, y: 120 },
+            data: {
+              label: "任务需求分析",
+              role: "架构与拆解",
+              model: "Claude 3.5 Sonnet",
+              reasoning: "高",
+              status: phase === "analysis" ? "running" : "succeeded",
+            },
+          },
+          {
+            id: "node-2",
+            type: "mindMapNode",
+            position: { x: 310, y: 120 },
+            data: {
+              label: "核心代码编写与 Checkpoint",
+              role: "代码开发",
+              model: "Claude 3.5 Sonnet",
+              reasoning: "高",
+              status:
+                phase === "development"
+                  ? "running"
+                  : phase === "analysis"
+                  ? "pending"
+                  : "succeeded",
+            },
+          },
+          {
+            id: "node-3",
+            type: "mindMapNode",
+            position: { x: 570, y: 50 },
+            data: {
+              label: "自动化单元与回归测试",
+              role: "测试验证",
+              model: "自动化环境 (Test Runner)",
+              reasoning: "标准",
+              status:
+                phase === "tests"
+                  ? "running"
+                  : ["analysis", "development"].includes(phase ?? "")
+                  ? "pending"
+                  : snapshot?.flow.testHistory.some((t) => t.status === "failed") &&
+                    phase !== "completed" &&
+                    phase !== "human_approval"
+                  ? "failed"
+                  : "succeeded",
+            },
+          },
+          {
+            id: "node-4",
+            type: "mindMapNode",
+            position: { x: 570, y: 200 },
+            data: {
+              label: "代码规范与安全性 Review",
+              role: "代码审查",
+              model: "Claude 3.5 Sonnet",
+              reasoning: "高",
+              status:
+                phase === "review"
+                  ? "running"
+                  : ["analysis", "development", "tests"].includes(phase ?? "")
+                  ? "pending"
+                  : snapshot?.flow.reviewHistory.some((r) => r.verdict === "changes_requested") &&
+                    phase !== "completed" &&
+                    phase !== "human_approval"
+                  ? "failed"
+                  : "succeeded",
+            },
+          },
+          {
+            id: "node-5",
+            type: "mindMapNode",
+            position: { x: 860, y: 120 },
+            data: {
+              label: "人工决策与交付确认",
+              role: "质量审批",
+              model: "人工确认 (Human In Loop)",
+              reasoning: "最高",
+              status:
+                phase === "human_approval"
+                  ? "waiting"
+                  : phase === "completed"
+                  ? "succeeded"
+                  : "pending",
+            },
+          },
+        ]
+      : [
+          {
+            id: "node-single-1",
+            type: "mindMapNode",
+            position: { x: 100, y: 120 },
+            data: {
+              label: detail.title,
+              role: "独立执行",
+              model: "Mock Agent / 本地模型",
+              reasoning: "标准",
+              status:
+                detail.runState === "running"
+                  ? "running"
+                  : detail.runState === "succeeded"
+                  ? "succeeded"
+                  : detail.runState === "failed"
+                  ? "failed"
+                  : "pending",
+            },
+          },
+        ];
+
+    const defaultEdges: Edge[] = isDev
+      ? [
+          {
+            id: "e1-2",
+            source: "node-1",
+            target: "node-2",
+            style: { stroke: "#b0b0b8", strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#86868b" },
+          },
+          {
+            id: "e2-3",
+            source: "node-2",
+            target: "node-3",
+            style: { stroke: "#b0b0b8", strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#86868b" },
+          },
+          {
+            id: "e2-4",
+            source: "node-2",
+            target: "node-4",
+            style: { stroke: "#b0b0b8", strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#86868b" },
+          },
+          {
+            id: "e3-5",
+            source: "node-3",
+            target: "node-5",
+            style: { stroke: "#b0b0b8", strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#86868b" },
+          },
+          {
+            id: "e4-5",
+            source: "node-4",
+            target: "node-5",
+            style: { stroke: "#b0b0b8", strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#86868b" },
+          },
+        ]
+      : [];
+
+    setNodes((prev) => (prev.length > 0 ? prev : defaultNodes));
+    setEdges((prev) => (prev.length > 0 ? prev : defaultEdges));
+  }, [detail, snapshot, setNodes, setEdges]);
+
+  const handleAddNode = () => {
+    if (!newNodeLabel.trim()) return;
+    const newId = `custom-node-${Date.now()}`;
+    const newNode: Node = {
+      id: newId,
+      type: "mindMapNode",
+      position: { x: 300 + Math.random() * 200, y: 60 + Math.random() * 150 },
+      data: {
+        label: newNodeLabel.trim(),
+        role: newNodeRole,
+        model: newNodeModel,
+        reasoning: newNodeReasoning,
+        status: "pending",
+      },
+    };
+    setNodes((prev) => [...prev, newNode]);
+    setShowAddNodeModal(false);
+    setNewNodeLabel("");
+  };
+
+  const handleCancelRun = async () => {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      await cancelRun(detail.runId);
+      await loadData();
+      await onRefreshList();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRerun = async () => {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      await createMockTask({
+        title: `[重试] ${detail.title}`,
+        description: detail.description,
+        acceptanceCriteria: detail.acceptanceCriteria,
+        outcome: "succeeded",
+      });
+      await onRefreshList();
+      onBack();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleApproval = async (decision: "approved" | "rejected") => {
+    if (!snapshot?.flow.candidateCommit) return;
+    setBusy(true);
+    try {
+      await submitDevelopmentApproval(detail!.runId, {
+        schemaVersion: 1,
+        candidateCommit: snapshot.flow.candidateCommit,
+        workflowDigest: snapshot.flow.workflowDigest,
+        decision,
+        comment: approvalComment.trim(),
+      });
+      setApprovalComment("");
+      await loadData();
+      await onRefreshList();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!detail) {
+    return (
+      <div style={{ padding: "40px", textAlign: "center", color: "#86868b" }}>
+        正在读取任务详情…
+      </div>
+    );
+  }
+
+  // Derive status details for lower half
+  const phase = snapshot?.flow.phase;
+  const isWaitingApproval =
+    detail.runState === "waiting_input" && phase === "human_approval";
+  const hasBlockers =
+    detail.runState === "failed" ||
+    detail.runState === "interrupted" ||
+    isWaitingApproval ||
+    Boolean(detail.waitingReason);
+
+  return (
+    <div className="task-detail-page">
+      {/* Top Header Bar */}
+      <div className="detail-top-nav">
+        <button className="apple-btn-secondary" type="button" onClick={onBack}>
+          ← 返回任务列表
+        </button>
+        <div className="task-title-group">
+          <h1>{detail.title}</h1>
+          <span className={`apple-pill ${detail.runState}`}>
+            {stateLabels[detail.runState]}
+          </span>
+        </div>
+        <div className="detail-action-buttons">
+          {["queued", "running", "waiting_input"].includes(detail.runState) && (
+            <button
+              className="apple-btn-secondary"
+              type="button"
+              disabled={busy}
+              onClick={() => void handleCancelRun()}
+            >
+              取消执行
+            </button>
+          )}
+          {["succeeded", "failed", "cancelled", "interrupted"].includes(detail.runState) && (
+            <button
+              className="apple-btn-primary"
+              type="button"
+              disabled={busy}
+              onClick={() => void handleRerun()}
+            >
+              重新执行
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && <div className="apple-alert-box error">{error}</div>}
+
+      {/* Upper Half: Mind Map Style White Canvas */}
+      <section className="canvas-section">
+        <div className="canvas-toolbar">
+          <div className="toolbar-info">
+            <span className="section-title">任务工作流脑图 (Mind Map)</span>
+            <small className="section-sub">
+              点击节点可选中查看，支持拖拽节点或添加新的功能节点
+            </small>
+          </div>
+          <button
+            className="apple-btn-secondary"
+            type="button"
+            onClick={() => setShowAddNodeModal(true)}
+          >
+            + 添加节点
+          </button>
+        </div>
+
+        <div className="mindmap-canvas-wrapper">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            nodeTypes={nodeTypes}
+            onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+            fitView
+          >
+            <Background color="#f0f0f2" gap={20} size={1} />
+            <Controls showInteractive={false} />
+          </ReactFlow>
+        </div>
+      </section>
+
+      {/* Lower Half: Execution Status Breakdown */}
+      <section className="status-breakdown-section">
+        <div className="section-title-bar">
+          <h2>当前执行状态</h2>
+          <small>
+            Attempt #{detail.attemptNumber ?? "—"} ·{" "}
+            {snapshot ? `第 ${snapshot.flow.iteration} 轮迭代 · 已用 ${snapshot.flow.actionsUsed} 步` : "独立单步"}
+          </small>
+        </div>
+
+        <div className="status-cards-grid">
+          {/* 1. 已完成什么 */}
+          <div className="status-card">
+            <div className="card-header">
+              <span className="card-badge green">✓ 已完成内容</span>
+            </div>
+            <ul className="status-list">
+              <li>
+                <strong>创建任务与资源锁定：</strong>
+                <span>任务已原子入库，获取工作区隔离环境。</span>
+              </li>
+              {checkpoints.map((cp, idx) => (
+                <li key={cp.checkpointId}>
+                  <strong>Checkpoint #{idx + 1}：</strong>
+                  <span>
+                    代码已提交 (Commit: <code>{cp.commitSha.slice(0, 7)}</code>)
+                  </span>
+                </li>
+              ))}
+              {snapshot?.flow.testHistory
+                .filter((t) => t.status === "passed")
+                .map((t, idx) => (
+                  <li key={idx}>
+                    <strong>自动化测试通过：</strong>
+                    <span>{t.summary}</span>
+                  </li>
+                ))}
+              {snapshot?.flow.reviewHistory
+                .filter((r) => r.verdict === "approved")
+                .map((r, idx) => (
+                  <li key={idx}>
+                    <strong>代码审查批准：</strong>
+                    <span>{r.summary}</span>
+                  </li>
+                ))}
+              {detail.runState === "succeeded" && (
+                <li style={{ color: "#24a159" }}>
+                  <strong>最终交付：</strong>
+                  <span>任务已全部完成并通过验证。</span>
+                </li>
+              )}
+            </ul>
+          </div>
+
+          {/* 2. 下一步需要执行什么 */}
+          <div className="status-card">
+            <div className="card-header">
+              <span className="card-badge blue">→ 下一步计划</span>
+            </div>
+            <div className="status-content">
+              {detail.runState === "queued" && (
+                <p>等待本地调度器分配并发通道并启动 Runner 进程…</p>
+              )}
+              {detail.runState === "running" && (
+                <p>
+                  当前处于【{phase === "analysis" ? "需求分析" : phase === "development" ? "代码生成" : phase === "tests" ? "测试运行" : phase === "review" ? "代码审查" : "执行中"}】阶段，Runner 正在执行子命令并写入输出日志。
+                </p>
+              )}
+              {isWaitingApproval && (
+                <p>所有测试与 Review 已就绪，等待人工确认当前 Checkpoint 代码快照是否准予交付。</p>
+              )}
+              {detail.runState === "succeeded" && (
+                <p>所有步骤已顺利结束，无需进一步操作。可随时重新运行。</p>
+              )}
+              {detail.runState === "failed" && (
+                <p>任务在当前步骤中断，可检查右侧阻塞原因后选择重试。</p>
+              )}
+              {detail.runState === "cancelled" && (
+                <p>执行已被用户取消，资源锁已释放。</p>
+              )}
+            </div>
+          </div>
+
+          {/* 3. 阻塞时，哪里有问题 */}
+          <div className={`status-card ${hasBlockers ? "alert" : ""}`}>
+            <div className="card-header">
+              <span className={`card-badge ${hasBlockers ? "red" : "gray"}`}>
+                {hasBlockers ? "⚠ 阻塞与异常诊断" : "● 无阻塞"}
+              </span>
+            </div>
+            <div className="status-content">
+              {!hasBlockers && (
+                <p style={{ color: "#86868b" }}>执行通畅，无阻塞或异常告警。</p>
+              )}
+
+              {detail.waitingReason && (
+                <p className="blocker-text">
+                  <strong>阻塞原因：</strong>
+                  {detail.waitingReason}
+                </p>
+              )}
+
+              {isWaitingApproval && (
+                <div className="approval-action-box">
+                  <p>
+                    <strong>待审批候选版本：</strong>
+                    <code>{snapshot?.flow.candidateCommit?.slice(0, 10)}</code>
+                  </p>
+                  <textarea
+                    rows={2}
+                    placeholder="审批批注（若要求修改返工时建议填写）…"
+                    value={approvalComment}
+                    onChange={(e) => setApprovalComment(e.target.value)}
+                  />
+                  <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+                    <button
+                      className="apple-btn-primary"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleApproval("approved")}
+                    >
+                      批准通过
+                    </button>
+                    <button
+                      className="apple-btn-secondary"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleApproval("rejected")}
+                    >
+                      要求修改返工
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {detail.errorCode && (
+                <p className="blocker-text">
+                  <strong>错误码：</strong>
+                  <code>{detail.errorCode}</code>
+                </p>
+              )}
+
+              {snapshot?.flow.reviewHistory.some(
+                (r) => r.verdict === "changes_requested"
+              ) &&
+                phase !== "completed" && (
+                  <div className="review-findings-box">
+                    <strong>Review 提出的问题：</strong>
+                    {snapshot.flow.reviewHistory
+                      .flatMap((r) => r.findings)
+                      .slice(0, 3)
+                      .map((f, i) => (
+                        <div key={i} className="finding-item">
+                          [{f.severity}] {f.file}:{f.line} - {f.message}
+                        </div>
+                      ))}
+                  </div>
+                )}
+            </div>
+          </div>
+        </div>
+
+        {/* Collapsible Execution Evidence: Logs and Git Diff */}
+        <details className="detail-collapsible" style={{ marginTop: "16px" }}>
+          <summary>查看实时终端日志与 Git 代码 Diff</summary>
+          <div className="collapsible-inner">
+            {diffText && (
+              <div className="diff-preview">
+                <div className="panel-subhead">Git Checkpoint Diff</div>
+                <pre className="apple-code-block">
+                  {diffText.split("\n").map((line, idx) => {
+                    let cls = "line";
+                    if (line.startsWith("+") && !line.startsWith("+++")) cls += " add";
+                    else if (line.startsWith("-") && !line.startsWith("---")) cls += " del";
+                    else if (line.startsWith("@@")) cls += " meta";
+                    return (
+                      <div key={idx} className={cls}>
+                        {line}
+                      </div>
+                    );
+                  })}
+                </pre>
+              </div>
+            )}
+
+            <div className="logs-preview">
+              <div className="log-tab-row">
+                <button
+                  type="button"
+                  className={activeLogTab === "stdout" ? "active" : ""}
+                  onClick={() => setActiveLogTab("stdout")}
+                >
+                  stdout.log
+                </button>
+                <button
+                  type="button"
+                  className={activeLogTab === "stderr" ? "active" : ""}
+                  onClick={() => setActiveLogTab("stderr")}
+                >
+                  stderr.log
+                </button>
+              </div>
+              <pre className="apple-code-block terminal">
+                {activeLogTab === "stdout"
+                  ? logs?.stdout || "(无标准输出日志)"
+                  : logs?.stderr || "(无错误输出日志)"}
+              </pre>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      {/* Modal: Add Node to Mind Map */}
+      {showAddNodeModal && (
+        <div className="apple-modal-backdrop" onClick={() => setShowAddNodeModal(false)}>
+          <div className="apple-modal-card" onClick={(e) => e.stopPropagation()}>
+            <h3>向脑图添加功能节点</h3>
+            <div className="modal-body-form">
+              <label>
+                功能担任 (Role)
+                <select
+                  value={newNodeRole}
+                  onChange={(e) => setNewNodeRole(e.target.value)}
+                >
+                  <option value="开发编写">开发编写 (Developer)</option>
+                  <option value="代码审查">代码审查 (Reviewer)</option>
+                  <option value="测试验证">测试验证 (Tester)</option>
+                  <option value="需求拆解">需求拆解 (Architect)</option>
+                  <option value="人工决策">人工决策 (Approval)</option>
+                </select>
+              </label>
+
+              <label>
+                节点名称
+                <input
+                  placeholder="例如：优化 SQL 查询与连接池"
+                  value={newNodeLabel}
+                  onChange={(e) => setNewNodeLabel(e.target.value)}
+                />
+              </label>
+
+              <label>
+                模型名称
+                <select
+                  value={newNodeModel}
+                  onChange={(e) => setNewNodeModel(e.target.value)}
+                >
+                  <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet</option>
+                  <option value="GPT-4o">GPT-4o</option>
+                  <option value="DeepSeek-R1">DeepSeek-R1</option>
+                  <option value="本地仿真模型">本地仿真模型 (Mock Agent)</option>
+                </select>
+              </label>
+
+              <label>
+                推理程度
+                <select
+                  value={newNodeReasoning}
+                  onChange={(e) => setNewNodeReasoning(e.target.value)}
+                >
+                  <option value="极高 (High Thinking)">极高 (High Thinking)</option>
+                  <option value="高 (Standard Deep)">高 (Standard Deep)</option>
+                  <option value="中等 (Medium)">中等 (Medium)</option>
+                  <option value="快速响应 (Low)">快速响应 (Low)</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="modal-btn-row">
+              <button
+                className="apple-btn-secondary"
+                type="button"
+                onClick={() => setShowAddNodeModal(false)}
+              >
+                取消
+              </button>
+              <button
+                className="apple-btn-primary"
+                type="button"
+                onClick={handleAddNode}
+              >
+                添加节点
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
