@@ -189,3 +189,56 @@ export const getDevelopmentRun = (runId: string) =>
 
 export const submitDevelopmentApproval = (runId: string, approval: HumanApproval) =>
   invoke<DevelopmentRunSnapshot>("submit_development_approval", { runId, approval });
+
+export interface CheckpointRecord {
+  checkpointId: string;
+  workspaceId: string;
+  runId: string;
+  attemptId: string;
+  baseSha: string;
+  commitSha: string;
+  controlledFiles: string[];
+  marker: string;
+  noChanges: boolean;
+  createdAt: string;
+}
+
+export interface AttemptLogs {
+  stdout: string;
+  stderr: string;
+  hasResult: boolean;
+}
+
+export interface AccountStatusSummary {
+  accountId: string;
+  displayName: string;
+  role: string;
+  isLocked: boolean;
+  lockedByAttemptId: string | null;
+  provider: string;
+}
+
+export interface ResourceLockRecord {
+  resourceType: string;
+  resourceId: string;
+  attemptId: string;
+  acquiredAt: string;
+}
+
+export interface AccountOverview {
+  accounts: AccountStatusSummary[];
+  activeLocks: ResourceLockRecord[];
+  globalConcurrencyLimit: number;
+}
+
+export const listWorkflowVersions = () =>
+  invoke<WorkflowVersionRecord[]>("list_workflow_versions");
+
+export const listCheckpoints = (runId: string) =>
+  invoke<CheckpointRecord[]>("list_checkpoints", { runId });
+
+export const getAttemptLogs = (runId: string, attemptId: string) =>
+  invoke<AttemptLogs>("get_attempt_logs", { runId, attemptId });
+
+export const getAccountStates = () =>
+  invoke<AccountOverview>("get_account_states");

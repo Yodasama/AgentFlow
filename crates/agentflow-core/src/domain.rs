@@ -286,3 +286,23 @@ pub struct ArtifactRecord {
     pub content_hash: String,
     pub created_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceLockRecord {
+    pub resource_type: String,
+    pub resource_id: String,
+    pub attempt_id: Uuid,
+    pub acquired_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountStatusSummary {
+    pub account_id: String,
+    pub display_name: String,
+    pub role: String,
+    pub is_locked: bool,
+    pub locked_by_attempt_id: Option<Uuid>,
+    pub provider: String,
+}

@@ -1,7 +1,10 @@
 use agentflow_core::{
     development_flow::{HumanApproval, standard_development_workflow},
     development_runtime::{MockDevelopmentScenario, create_mock_development_run},
-    domain::{CreateMockTaskRequest, RunDetail, RunSummary},
+    domain::{
+        AccountStatusSummary, CheckpointRecord, CreateMockTaskRequest, ResourceLockRecord,
+        RunDetail, RunSummary,
+    },
     execution::{AppInstanceLock, SchedulerConfig, SchedulerHandle, request_cancellation},
     protocol::RUNNER_PROTOCOL_VERSION,
     storage::Storage,
@@ -157,6 +160,107 @@ fn publish_workflow(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn list_workflow_versions(
+    state: State<'_, AppCoreState>,
+) -> Result<Vec<WorkflowVersionRecord>, String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .list_workflow_versions()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_checkpoints(
+    run_id: uuid::Uuid,
+    state: State<'_, AppCoreState>,
+) -> Result<Vec<CheckpointRecord>, String> {
+    state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?
+        .list_checkpoints(run_id)
+        .map_err(|error| error.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AttemptLogs {
+    stdout: String,
+    stderr: String,
+    has_result: bool,
+}
+
+#[tauri::command]
+fn get_attempt_logs(
+    run_id: uuid::Uuid,
+    attempt_id: uuid::Uuid,
+    state: State<'_, AppCoreState>,
+) -> Result<AttemptLogs, String> {
+    let dir = state
+        .data_directory
+        .join("runs")
+        .join(run_id.to_string())
+        .join("attempts")
+        .join(attempt_id.to_string());
+    let stdout = std::fs::read_to_string(dir.join("stdout.log")).unwrap_or_default();
+    let stderr = std::fs::read_to_string(dir.join("stderr.log")).unwrap_or_default();
+    let has_result = dir.join("result.json").is_file();
+    Ok(AttemptLogs {
+        stdout,
+        stderr,
+        has_result,
+    })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountOverview {
+    accounts: Vec<AccountStatusSummary>,
+    active_locks: Vec<ResourceLockRecord>,
+    global_concurrency_limit: usize,
+}
+
+#[tauri::command]
+fn get_account_states(state: State<'_, AppCoreState>) -> Result<AccountOverview, String> {
+    let storage = state
+        .storage
+        .lock()
+        .map_err(|_| "database mutex is poisoned".to_owned())?;
+    let locks = storage
+        .list_resource_locks()
+        .map_err(|error| error.to_string())?;
+
+    let configured = [
+        ("mock-developer", "Mock Developer", "开发 Agent", "Local Mock / Codex 兼容"),
+        ("mock-tester", "Mock Tester", "自动化测试", "Local Test Runner"),
+        ("mock-reviewer", "Mock Reviewer", "代码审计", "Local Code Reviewer"),
+        ("codex-primary", "Codex Primary", "开发专家", "OpenAI Codex CLI"),
+        ("claude-primary", "Claude Primary", "架构与评审", "Anthropic Claude CLI"),
+    ];
+
+    let mut accounts = Vec::new();
+    for (id, name, role, provider) in configured {
+        let lock = locks.iter().find(|l| l.resource_type == "account" && l.resource_id == id);
+        accounts.push(AccountStatusSummary {
+            account_id: id.to_string(),
+            display_name: name.to_string(),
+            role: role.to_string(),
+            is_locked: lock.is_some(),
+            locked_by_attempt_id: lock.map(|l| l.attempt_id),
+            provider: provider.to_string(),
+        });
+    }
+
+    Ok(AccountOverview {
+        accounts,
+        active_locks: locks,
+        global_concurrency_limit: 3,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -202,7 +306,11 @@ pub fn run() {
             cancel_run,
             validate_workflow,
             get_standard_workflow,
-            publish_workflow
+            publish_workflow,
+            list_workflow_versions,
+            list_checkpoints,
+            get_attempt_logs,
+            get_account_states
         ])
         .run(tauri::generate_context!())
         .expect("failed to run AgentFlow");

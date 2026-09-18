@@ -12,8 +12,8 @@ use uuid::Uuid;
 
 use crate::domain::{
     ActiveAttempt, ArtifactRecord, AttemptCompletion, AttemptState, CheckpointRecord,
-    CreateMockTaskRequest, MockOutcome, PreparedAttempt, ProjectRecord, RunDetail, RunState,
-    RunSummary, StateParseError, StepExecutionState, WorkspaceRecord,
+    CreateMockTaskRequest, MockOutcome, PreparedAttempt, ProjectRecord, ResourceLockRecord,
+    RunDetail, RunState, RunSummary, StateParseError, StepExecutionState, WorkspaceRecord,
 };
 use crate::{
     development_flow::{ApprovalDecision, ApprovalRecord, DevelopmentLoop, DevelopmentPhase},
@@ -1199,6 +1199,60 @@ impl Storage {
             ],
         )?;
         Ok(record)
+    }
+
+    pub fn list_workflow_versions(&self) -> Result<Vec<WorkflowVersionRecord>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, name, schema_version, digest, definition_json, created_at
+             FROM workflow_versions
+             ORDER BY created_at DESC",
+        )?;
+        let rows = statement.query_map([], workflow_version_from_row)?;
+        let mut versions = Vec::new();
+        for row in rows {
+            versions.push(row?);
+        }
+        Ok(versions)
+    }
+
+    pub fn list_checkpoints(&self, run_id: Uuid) -> Result<Vec<CheckpointRecord>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, workspace_id, run_id, attempt_id, base_sha, commit_sha,
+                    controlled_files_json, marker, no_changes, created_at
+             FROM checkpoints
+             WHERE run_id = ?1
+             ORDER BY created_at ASC",
+        )?;
+        let rows = statement.query_map([run_id.to_string()], checkpoint_from_row)?;
+        let mut checkpoints = Vec::new();
+        for row in rows {
+            checkpoints.push(row?);
+        }
+        Ok(checkpoints)
+    }
+
+    pub fn list_resource_locks(&self) -> Result<Vec<ResourceLockRecord>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT resource_type, resource_id, attempt_id, acquired_at
+             FROM resource_locks
+             ORDER BY acquired_at ASC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            let attempt_str: String = row.get(2)?;
+            let attempt_id = parse_uuid("resource lock attempt", &attempt_str)
+                .map_err(|error| rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(error)))?;
+            Ok(ResourceLockRecord {
+                resource_type: row.get(0)?,
+                resource_id: row.get(1)?,
+                attempt_id,
+                acquired_at: row.get(3)?,
+            })
+        })?;
+        let mut locks = Vec::new();
+        for row in rows {
+            locks.push(row?);
+        }
+        Ok(locks)
     }
 
     pub fn record_approval(
