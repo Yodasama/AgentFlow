@@ -9,8 +9,6 @@ import { AgentManagerView } from "./AgentManagerView";
 import { SchedulesView } from "./SchedulesView";
 import { PlanningView } from "./PlanningView";
 import { ChatView } from "./ChatView";
-import { type Workspace, getActiveWorkspace } from "./workspaces";
-import { WorkspaceModal } from "./WorkspaceModal";
 
 import {
   IconChat,
@@ -18,8 +16,6 @@ import {
   IconPlanning,
   IconSchedule,
   IconAgent,
-  IconFolder,
-  IconChevronDown,
 } from "./icons";
 
 const navigation = ["对话", "任务", "项目规划", "定时任务"];
@@ -30,10 +26,6 @@ export function App() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [busy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Global Active Workspace
-  const [currentWorkspace, setCurrentWorkspace] = useState<Workspace>(() => getActiveWorkspace());
-  const [showGlobalWsModal, setShowGlobalWsModal] = useState(false);
 
   // Cross-module handover for Grill-Me: { title, description }
   const [grillTopic, setGrillTopic] = useState<{ title: string; description: string } | null>(null);
@@ -89,24 +81,6 @@ export function App() {
           <div className="brand-artistic">
             Agent<em>Flow</em>
           </div>
-
-          {/* Global Workspace Indicator & Switcher */}
-          <button
-            type="button"
-            className="sidebar-workspace-btn"
-            onClick={() => setShowGlobalWsModal(true)}
-            title="点击管理与切换工作区目录"
-          >
-            <span className="ws-dot">
-              <IconFolder size={13} />
-            </span>
-            <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>
-              {currentWorkspace.name}
-            </span>
-            <span className="ws-chevron" style={{ display: "inline-flex", alignItems: "center" }}>
-              <IconChevronDown size={12} />
-            </span>
-          </button>
         </div>
 
         {/* Main Navigation: 对话, 任务, 项目规划, 定时任务 */}
@@ -196,15 +170,6 @@ export function App() {
           </>
         )}
       </main>
-
-      {/* Global Workspace Modal */}
-      {showGlobalWsModal && (
-        <WorkspaceModal
-          activeWorkspace={currentWorkspace}
-          onSelectWorkspace={(ws) => setCurrentWorkspace(ws)}
-          onClose={() => setShowGlobalWsModal(false)}
-        />
-      )}
     </div>
   );
 }

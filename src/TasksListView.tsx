@@ -7,8 +7,14 @@ import {
   type RunState,
   type GoalRecord,
 } from "./api";
-import { IconFolder, IconZap, IconSparkles } from "./icons";
+import { IconFolder, IconZap, IconSparkles, IconGitBranch } from "./icons";
 import { DrawerSelect } from "./DrawerSelect";
+import {
+  getStoredWorkspaces,
+  getAllTaskWorkspaces,
+  setTaskWorkspace,
+  type TaskWorkspaceBinding,
+} from "./workspaces";
 
 const stateLabels: Record<RunState, string> = {
   queued: "排队中",
@@ -49,19 +55,27 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
   const [taskMode, setTaskMode] = useState<"development" | "single">("development");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [repositoryPath, setRepositoryPath] = useState("");
+  const storedWorkspaces = getStoredWorkspaces();
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>(
+    storedWorkspaces[0]?.id || "ws-taskboard"
+  );
+  const [repositoryPath, setRepositoryPath] = useState(
+    storedWorkspaces[0]?.path || "/Users/yida/项目/TaskBoard"
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<"all" | "project" | "light">("all");
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
 
   const [availablePlans, setAvailablePlans] = useState<GoalRecord[]>([]);
   const [taskLinks, setTaskLinks] = useState<Record<string, TaskProjectLink>>(getTaskProjectLinks);
+  const [taskWorkspaces, setTaskWorkspaces] = useState<Record<string, TaskWorkspaceBinding>>(getAllTaskWorkspaces);
   const [modalBusy, setModalBusy] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
   useEffect(() => {
     void listGoals().then(setAvailablePlans).catch(() => {});
     setTaskLinks(getTaskProjectLinks());
+    setTaskWorkspaces(getAllTaskWorkspaces());
   }, [runs]);
 
   const handleCreate = async (e: FormEvent) => {
@@ -106,6 +120,18 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
           setTaskLinks(updated);
           localStorage.setItem(TASK_PROJECT_LINKS_KEY, JSON.stringify(updated));
         }
+      }
+
+      // Bind workspace specifically to this task
+      const targetWs = storedWorkspaces.find((w) => w.id === selectedWorkspaceId) || storedWorkspaces[0];
+      if (targetWs) {
+        setTaskWorkspace(createdRunId, {
+          workspaceId: targetWs.id,
+          workspaceName: targetWs.name,
+          workspacePath: repositoryPath.trim() || targetWs.path,
+          branch: targetWs.branch || "main",
+        });
+        setTaskWorkspaces(getAllTaskWorkspaces());
       }
 
       setShowCreateModal(false);
@@ -246,17 +272,34 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
                     <td className="col-name">
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                         <strong>{run.title}</strong>
-                        {link ? (
-                          <span className="task-project-tag" title={`所属立项：${link.planTitle}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                            <IconFolder size={11} />
-                            <span>{link.planTitle}</span>
-                          </span>
-                        ) : (
-                          <span className="task-light-tag" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                            <IconZap size={11} />
-                            <span>独立轻任务</span>
-                          </span>
-                        )}
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                          {link ? (
+                            <span className="task-project-tag" title={`所属立项：${link.planTitle}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                              <IconFolder size={11} />
+                              <span>{link.planTitle}</span>
+                            </span>
+                          ) : (
+                            <span className="task-light-tag" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                              <IconZap size={11} />
+                              <span>独立轻任务</span>
+                            </span>
+                          )}
+
+                          {taskWorkspaces[run.runId] && (
+                            <span
+                              className="task-workspace-badge"
+                              title={`工作区路径：${taskWorkspaces[run.runId].workspacePath}`}
+                              style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+                            >
+                              <IconFolder size={11} />
+                              <span>{taskWorkspaces[run.runId].workspaceName}</span>
+                              <span className="task-ws-branch-pill">
+                                <IconGitBranch size={9} />
+                                {taskWorkspaces[run.runId].branch}
+                              </span>
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
 
@@ -366,12 +409,34 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
                 />
               </label>
 
+              {/* Workspace Binding Dropdown */}
+              <label>
+                <span>绑定执行工作区 (代码工程与分支上下文)</span>
+                <DrawerSelect
+                  value={selectedWorkspaceId}
+                  onChange={(val) => {
+                    setSelectedWorkspaceId(val);
+                    const found = storedWorkspaces.find((w) => w.id === val);
+                    if (found) {
+                      setRepositoryPath(found.path);
+                    }
+                  }}
+                  options={storedWorkspaces.map((w) => ({
+                    value: w.id,
+                    label: w.name,
+                    description: `${w.path} · 默认分支: ${w.branch}`,
+                    icon: <IconFolder size={13} stroke="#787774" />,
+                    badge: w.branch,
+                  }))}
+                />
+              </label>
+
               {taskMode === "development" && (
                 <label>
-                  本地 Git 仓库路径
+                  本地工程代码路径
                   <input
                     disabled={modalBusy}
-                    placeholder="/Users/yida/项目/TaskBoard (留空默认使用当前工作区)"
+                    placeholder="/Users/yida/项目/TaskBoard"
                     value={repositoryPath}
                     onChange={(e) => setRepositoryPath(e.target.value)}
                   />

@@ -30,6 +30,7 @@ import {
 } from "./api";
 import { loadAgentRoles, type AgentRoleConfig } from "./AgentManagerView";
 import { getTaskProjectLinks } from "./TasksListView";
+import { getTaskWorkspace } from "./workspaces";
 import { DrawerSelect, type DrawerSelectOption } from "./DrawerSelect";
 import {
   IconCpu,
@@ -271,9 +272,10 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  // Available Agent Roles & Linked Project
+  // Available Agent Roles & Linked Project & Bound Workspace
   const [availableRoles, setAvailableRoles] = useState<AgentRoleConfig[]>(loadAgentRoles);
   const linkedProject = getTaskProjectLinks()[runId];
+  const taskWs = getTaskWorkspace(runId);
 
   // New Node Modal
   const [showAddNodeModal, setShowAddNodeModal] = useState(false);
@@ -713,6 +715,22 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
                 <span>独立轻任务</span>
               </span>
             )}
+
+            {taskWs && (
+              <span
+                className="breadcrumb-ws"
+                title={`绑定工作区：${taskWs.workspacePath} (${taskWs.branch})`}
+                style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+              >
+                <IconFolder size={11} />
+                <span>{taskWs.workspaceName}</span>
+                <span className="breadcrumb-branch-tag" style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                  <IconGitBranch size={9} />
+                  {taskWs.branch}
+                </span>
+              </span>
+            )}
+
             <span className="breadcrumb-sep">›</span>
             <span className="breadcrumb-current">{detail.title}</span>
           </div>

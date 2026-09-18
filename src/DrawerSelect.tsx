@@ -14,6 +14,7 @@ export interface DrawerSelectProps {
   onChange: (value: string) => void;
   options: DrawerSelectOption[];
   placeholder?: string;
+  customLabel?: string;
   className?: string;
   triggerStyle?: React.CSSProperties;
   menuStyle?: React.CSSProperties;
@@ -26,6 +27,7 @@ export function DrawerSelect({
   onChange,
   options,
   placeholder = "请选择…",
+  customLabel,
   className = "",
   triggerStyle,
   menuStyle,
@@ -87,7 +89,7 @@ export function DrawerSelect({
             </span>
           )}
           <span className="drawer-select-trigger-text">
-            {selectedOption ? selectedOption.label : placeholder}
+            {customLabel || (selectedOption ? selectedOption.label : placeholder)}
           </span>
         </div>
         <span className={`drawer-select-arrow ${isOpen ? "open" : ""}`}>

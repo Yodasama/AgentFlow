@@ -6,8 +6,20 @@ import {
   type GoalRecord,
   type ScheduleRecord,
 } from "./api";
-import { type Workspace, getActiveWorkspace } from "./workspaces";
+import {
+  type Workspace,
+  type ServerConfig,
+  type EnvTarget,
+  getActiveWorkspace,
+  getStoredWorkspaces,
+  getStoredServers,
+  getActiveEnv,
+  setActiveEnv as persistActiveEnv,
+  getActiveServerId,
+  setActiveServerId as persistActiveServerId,
+} from "./workspaces";
 import { WorkspaceModal } from "./WorkspaceModal";
+import { ServerModal } from "./ServerModal";
 import {
   type AgentProviderConfig,
   getActiveProvider,
@@ -15,7 +27,7 @@ import {
   detectLocalEndpoints,
 } from "./agentAdapter";
 import { ProviderModal } from "./ProviderModal";
-import { DrawerSelect } from "./DrawerSelect";
+import { DrawerSelect, type DrawerSelectOption } from "./DrawerSelect";
 import {
   IconSparkles,
   IconFolder,
@@ -32,6 +44,14 @@ import {
   IconChevronDown,
   IconSend,
   IconPlus,
+  IconWaveform,
+  IconMicrophone,
+  IconHistory,
+  IconSidebar,
+  IconCheckCircle,
+  IconTrash,
+  IconGitBranch,
+  IconServer,
 } from "./icons";
 
 interface Props {
@@ -63,6 +83,16 @@ interface ScheduleCardData {
   workspaceName: string;
 }
 
+export interface ServerActionCardData {
+  title: string;
+  serverName: string;
+  serverHost: string;
+  user: string;
+  commands: string[];
+  safetyLevel: "需人工确认" | "静默执行";
+  summary: string;
+}
+
 interface GrillMeQuestion {
   question: string;
   options: string[];
@@ -74,10 +104,48 @@ interface ChatMessage {
   content: string;
   plan?: PlanCardData;
   schedule?: ScheduleCardData;
+  serverAction?: ServerActionCardData;
   grillMe?: {
     topic: string;
     questions: GrillMeQuestion[];
   };
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: ChatMessage[];
+  workspaceId: string;
+  model: string;
+  reasoning: string;
+}
+
+const CHAT_SESSIONS_STORAGE_KEY = "agentflow_chat_sessions_v2";
+const ACTIVE_SESSION_ID_KEY = "agentflow_active_chat_session_id_v2";
+
+function getStoredChatSessions(): ChatSession[] {
+  try {
+    const raw = localStorage.getItem(CHAT_SESSIONS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredChatSessions(sessions: ChatSession[]): void {
+  localStorage.setItem(CHAT_SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+}
+
+function formatSessionTime(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  if (diff < 60000) return "刚刚";
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+  const d = new Date(timestamp);
+  return `${d.getMonth() + 1}-${d.getDate()}`;
 }
 
 export function ChatView({
@@ -87,12 +155,6 @@ export function ChatView({
   initialGrillTopic,
   onClearGrillTopic,
 }: Props) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputText, setInputText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [selectedReasoning, setSelectedReasoning] = useState("深度 (High)");
-  const [notification, setNotification] = useState<string | null>(null);
-
   // Active Workspace
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace>(() => getActiveWorkspace());
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
@@ -101,9 +163,57 @@ export function ChatView({
   const [activeProvider, setActiveProvider] = useState<AgentProviderConfig>(() => getActiveProvider());
   const [selectedModel, setSelectedModel] = useState(activeProvider.models[0] || "Claude 3.5 Sonnet");
   const [showProviderModal, setShowProviderModal] = useState(false);
+  const [selectedReasoning, setSelectedReasoning] = useState("深度 (High)");
+
+  // Multi-session history state
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    const stored = getStoredChatSessions();
+    if (stored.length > 0) return stored;
+    const initial: ChatSession = {
+      id: `session-${Date.now()}`,
+      title: "新会话",
+      updatedAt: Date.now(),
+      messages: [],
+      workspaceId: getActiveWorkspace().id,
+      model: "Claude 3.5 Sonnet",
+      reasoning: "深度 (High)",
+    };
+    saveStoredChatSessions([initial]);
+    return [initial];
+  });
+
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    const saved = localStorage.getItem(ACTIVE_SESSION_ID_KEY);
+    const stored = getStoredChatSessions();
+    if (saved && stored.some((s) => s.id === saved)) return saved;
+    return stored[0]?.id || "";
+  });
+
+  const [showHistory, setShowHistory] = useState(true);
+  const [autoApprove, setAutoApprove] = useState(false);
+
+  // Environment target: local vs remote server
+  const [envTarget, setEnvTarget] = useState<EnvTarget>(() => getActiveEnv());
+  const [servers, setServers] = useState<ServerConfig[]>(() => getStoredServers());
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(() => getActiveServerId());
+  const [showServerModal, setShowServerModal] = useState(false);
+  const selectedServer = servers.find((s) => s.id === selectedServerId) || null;
+
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const s = sessions.find((item) => item.id === activeSessionId) || sessions[0];
+    return s?.messages || [];
+  });
+  const [inputText, setInputText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const showToast = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 3000);
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -112,6 +222,100 @@ export function ChatView({
   useEffect(() => {
     scrollToBottom();
   }, [messages, busy]);
+
+  // Session switching
+  useEffect(() => {
+    if (!activeSessionId) return;
+    localStorage.setItem(ACTIVE_SESSION_ID_KEY, activeSessionId);
+    const target = sessions.find((s) => s.id === activeSessionId);
+    if (target) {
+      setMessages(target.messages || []);
+      if (target.workspaceId) {
+        const storedWs = getStoredWorkspaces();
+        const foundWs = storedWs.find((w) => w.id === target.workspaceId);
+        if (foundWs) setActiveWorkspace(foundWs);
+      }
+      if (target.model) setSelectedModel(target.model);
+      if (target.reasoning) setSelectedReasoning(target.reasoning);
+    }
+  }, [activeSessionId]);
+
+  // Sync messages & session metadata
+  useEffect(() => {
+    setSessions((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id !== activeSessionId) return s;
+        let title = s.title;
+        if ((!title || title === "新会话" || title === "新对话") && messages.length > 0) {
+          const firstUser = messages.find((m) => m.sender === "user");
+          if (firstUser) {
+            title = firstUser.content.replace(/【.*?】/g, "").trim().slice(0, 24) || "新会话";
+          }
+        }
+        return {
+          ...s,
+          title,
+          messages,
+          updatedAt: Date.now(),
+          workspaceId: activeWorkspace.id,
+          model: selectedModel,
+          reasoning: selectedReasoning,
+        };
+      });
+      saveStoredChatSessions(updated);
+      return updated;
+    });
+  }, [messages, activeWorkspace, selectedModel, selectedReasoning]);
+
+  const handleNewSession = () => {
+    const newSession: ChatSession = {
+      id: `session-${Date.now()}`,
+      title: "新会话",
+      updatedAt: Date.now(),
+      messages: [],
+      workspaceId: activeWorkspace.id,
+      model: selectedModel,
+      reasoning: selectedReasoning,
+    };
+    const updated = [newSession, ...sessions];
+    setSessions(updated);
+    saveStoredChatSessions(updated);
+    setActiveSessionId(newSession.id);
+    setMessages([]);
+  };
+
+  const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const filtered = sessions.filter((s) => s.id !== sessionId);
+    if (filtered.length === 0) {
+      const fresh: ChatSession = {
+        id: `session-${Date.now()}`,
+        title: "新会话",
+        updatedAt: Date.now(),
+        messages: [],
+        workspaceId: activeWorkspace.id,
+        model: selectedModel,
+        reasoning: selectedReasoning,
+      };
+      setSessions([fresh]);
+      saveStoredChatSessions([fresh]);
+      setActiveSessionId(fresh.id);
+      setMessages([]);
+    } else {
+      setSessions(filtered);
+      saveStoredChatSessions(filtered);
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(filtered[0].id);
+        setMessages(filtered[0].messages || []);
+      }
+    }
+  };
+
+  const handleClearCurrentSession = () => {
+    setMessages([]);
+  };
+
+  const currentSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
 
   // Run initial auto-detection of local services in background
   useEffect(() => {
@@ -275,7 +479,70 @@ export function ChatView({
         return;
       }
 
-      // 2. Grill-Me Inquiries
+      // 2. Server Operation Task Pattern
+      const isServerTask =
+        envTarget === "server" ||
+        /服务器|docker|nginx|部署|重启|运维|宿主机|ssh|日志|集群|容器|清理/i.test(query);
+
+      if (isServerTask && !query.includes("定时") && !query.includes("每天")) {
+        const targetSrv = selectedServer || servers[0] || {
+          id: "srv-prod",
+          name: "生产服务器",
+          host: "192.168.1.100",
+          port: 22,
+          user: "deploy",
+          authType: "key" as const,
+          status: "unknown" as const,
+        };
+
+        let commands = [
+          `ssh ${targetSrv.user}@${targetSrv.host} -p ${targetSrv.port} "cd /data/apps/agentflow && git pull origin main"`,
+          `ssh ${targetSrv.user}@${targetSrv.host} -p ${targetSrv.port} "docker compose pull && docker compose up -d --remove-orphans"`,
+          `ssh ${targetSrv.user}@${targetSrv.host} -p ${targetSrv.port} "curl -sI http://localhost:8080/health || exit 1"`,
+        ];
+
+        if (/日志|排查|查错|错误/.test(query)) {
+          commands = [
+            `ssh ${targetSrv.user}@${targetSrv.host} "journalctl -u agentflow -n 80 --no-pager"`,
+            `ssh ${targetSrv.user}@${targetSrv.host} "tail -n 50 /var/log/nginx/error.log"`,
+            `ssh ${targetSrv.user}@${targetSrv.host} "docker stats --no-stream --format 'table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}'"`,
+          ];
+        } else if (/状态|负载|健康|容器|docker/.test(query)) {
+          commands = [
+            `ssh ${targetSrv.user}@${targetSrv.host} "uptime && free -h"`,
+            `ssh ${targetSrv.user}@${targetSrv.host} "docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'"`,
+            `ssh ${targetSrv.user}@${targetSrv.host} "df -h /data"`,
+          ];
+        } else if (/清理|缓存|释放/.test(query)) {
+          commands = [
+            `ssh ${targetSrv.user}@${targetSrv.host} "docker system prune -f --filter 'until=48h'"`,
+            `ssh ${targetSrv.user}@${targetSrv.host} "journalctl --vacuum-time=7d"`,
+          ];
+        }
+
+        const serverAction: ServerActionCardData = {
+          title: query.length > 24 ? query.slice(0, 24) + "…" : query,
+          serverName: targetSrv.name,
+          serverHost: `${targetSrv.user}@${targetSrv.host}:${targetSrv.port}`,
+          user: targetSrv.user,
+          commands,
+          safetyLevel: autoApprove ? "静默执行" : "需人工确认",
+          summary: `已针对远程节点【${targetSrv.name}】规划执行步骤，支持通过沙箱连接远程执行并同步采集标准输出与退出码。`,
+        };
+
+        const aiMsg: ChatMessage = {
+          id: `msg-ai-${Date.now()}`,
+          sender: "assistant",
+          content: `已为您规划针对目标服务器【${targetSrv.name}】的操作步骤。您可以审查下方待执行指令清单，确认后一键派发至服务器执行：`,
+          serverAction,
+        };
+
+        setMessages((prev) => [...prev, aiMsg]);
+        setBusy(false);
+        return;
+      }
+
+      // 3. Grill-Me Inquiries
       if (query.includes("Grill") || query.includes("grill") || query.includes("推演") || query.includes("探讨细节")) {
         handleLaunchGrillMe("新工程架构方案", query);
         return;
@@ -415,56 +682,187 @@ export function ChatView({
     }
   };
 
+  // Dispatch Server Task to Remote Host
+  const handleDispatchServerAction = async (action: ServerActionCardData) => {
+    setBusy(true);
+    try {
+      const created = await createMockDevelopmentTask(
+        {
+          title: `[服务器执行] ${action.title}`,
+          description: `目标节点：${action.serverName} (${action.serverHost})\n执行用户：${action.user}\n安全策略：${action.safetyLevel}\n预编排指令清单：\n${action.commands.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
+          acceptanceCriteria: [
+            `验证宿主机 ${action.serverHost} 凭据连通`,
+            "按序安全执行预定指令链并拦截非零退出码",
+            "回传执行 stdout/stderr 审计归档",
+          ],
+        },
+        activeWorkspace.path,
+        "test_then_review_retry"
+      );
+
+      await onRefreshRuns();
+      setNotification(`服务器任务已派发至【${action.serverName}】！Run ID: ${created.runId.slice(0, 8)}，正在跳转…`);
+      setTimeout(() => {
+        setNotification(null);
+        onNavigateToRun(created.runId);
+      }, 900);
+    } catch (err) {
+      setNotification(`派发服务器任务失败: ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reasoningShort = selectedReasoning.startsWith("深度") ? "深度" : "轻度";
+  const modelShortName = selectedModel.replace(/Claude-|GPT-/g, "").split(" ")[0] || selectedModel;
+
+  const combinedModelOptions: DrawerSelectOption[] = [
+    {
+      value: `${selectedModel}:::轻度`,
+      label: `${selectedModel} (快速轻度)`,
+      description: "低延迟极速响应，适合轻量单步或日常咨询",
+      icon: <IconCpu size={13} stroke="#787774" />,
+    },
+    {
+      value: `${selectedModel}:::深度`,
+      label: `${selectedModel} (深度长思考)`,
+      description: "全链条长思考、严苛自检与复杂工程拆解",
+      icon: <IconSparkles size={13} stroke="#787774" />,
+      badge: "推荐",
+    },
+    ...activeProvider.models
+      .filter((m) => m !== selectedModel)
+      .flatMap((m) => [
+        {
+          value: `${m}:::深度`,
+          label: `${m} 深度`,
+          description: "深度思考模式",
+          icon: <IconCpu size={13} stroke="#787774" />,
+        },
+        {
+          value: `${m}:::轻度`,
+          label: `${m} 轻度`,
+          description: "快速响应模式",
+          icon: <IconCpu size={13} stroke="#787774" />,
+        },
+      ]),
+  ];
+
+  const envOptions: DrawerSelectOption[] = [
+    {
+      value: "local",
+      label: "本机环境 (Localhost)",
+      description: "在当前机器工作区直接执行与调试代码",
+      icon: <IconLaptop size={13} stroke="#787774" />,
+    },
+    ...servers.map((s) => ({
+      value: `server:::${s.id}`,
+      label: `${s.name} (${s.host})`,
+      description: `${s.user}@${s.host}:${s.port} · ${s.authType === "key" ? "SSH 密钥" : "密码"}`,
+      icon: <IconServer size={13} stroke="#787774" />,
+      badge: s.status === "online" ? "在线" : undefined,
+    })),
+    {
+      value: "__manage_servers__",
+      label: "+ 管理与添加服务器…",
+      description: "配置远程 SSH 节点、凭证与连通性测试",
+      icon: <IconPlus size={13} stroke="#787774" />,
+    },
+  ];
+
+  const currentEnvValue = envTarget === "local" ? "local" : `server:::${selectedServerId || ""}`;
+  const envDisplayLabel = envTarget === "local" ? "本地" : (selectedServer?.name || "服务器");
+
   return (
     <div className="gpt-chat-root">
-      {/* Top Header Bar */}
-      <div className="gpt-header-bar">
-        <div className="gpt-header-left">
-          <span className="gpt-logo-icon" style={{ display: "inline-flex", alignItems: "center" }}>
-            <IconSparkles size={15} />
-          </span>
-          <span className="gpt-header-title">AgentFlow 智能中枢</span>
-        </div>
-
-        <div className="gpt-header-right">
-          {/* Provider / Adapter Pill */}
+      {/* Left Collapsible History Sidebar */}
+      <aside className={`chat-history-sidebar ${showHistory ? "" : "collapsed"}`}>
+        <div className="history-sidebar-header">
+          <div className="history-header-title">
+            <IconHistory size={14} stroke="#111111" />
+            <span>历史会话</span>
+          </div>
           <button
             type="button"
-            className="gpt-workspace-pill"
-            onClick={() => setShowProviderModal(true)}
-            title="管理本地与云端模型接入源"
+            className="history-new-btn"
+            onClick={handleNewSession}
+            title="开启新对话"
           >
-            <span style={{ display: "inline-flex", alignItems: "center" }}>
-              {activeProvider.isLocal ? <IconLaptop size={13} /> : <IconCloud size={13} />}
-            </span>
-            <span className="ws-label">接入源:</span>
-            <strong className="ws-name">{activeProvider.name.split(" ")[0]}</strong>
-            <span className="ws-chevron" style={{ display: "inline-flex", alignItems: "center" }}>
-              <IconSettings size={12} />
-            </span>
-          </button>
-
-          {/* Workspace Pill Button */}
-          <button
-            type="button"
-            className="gpt-workspace-pill"
-            onClick={() => setShowWorkspaceModal(true)}
-            title="点击切换或添加工程工作区"
-          >
-            <span className="ws-dot" style={{ display: "inline-flex", alignItems: "center" }}>
-              <IconFolder size={13} />
-            </span>
-            <span className="ws-label">工作区:</span>
-            <strong className="ws-name">{activeWorkspace.name}</strong>
-            <span className="ws-chevron" style={{ display: "inline-flex", alignItems: "center" }}>
-              <IconChevronDown size={12} />
-            </span>
+            <IconPlus size={12} stroke="#111111" />
+            <span>新对话</span>
           </button>
         </div>
-      </div>
 
-      {notification && (
-        <div className="gpt-notification-toast">
+        <div className="history-sessions-list">
+          {sessions.map((s) => {
+            const isActive = s.id === activeSessionId;
+            return (
+              <div
+                key={s.id}
+                className={`history-session-item ${isActive ? "active" : ""}`}
+                onClick={() => setActiveSessionId(s.id)}
+              >
+                <div className="history-session-info">
+                  <span className="history-session-title">{s.title || "新会话"}</span>
+                  <span className="history-session-date">{formatSessionTime(s.updatedAt)}</span>
+                </div>
+                <button
+                  type="button"
+                  className="history-delete-btn"
+                  onClick={(e) => handleDeleteSession(s.id, e)}
+                  title="删除此会话"
+                >
+                  <IconTrash size={12} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </aside>
+
+      {/* Main Chat Column */}
+      <div className="chat-main-column">
+        {/* Top Minimal Bar */}
+        <div className="gpt-header-bar">
+          <div className="gpt-header-left">
+            <button
+              type="button"
+              className="chat-toggle-sidebar-btn"
+              onClick={() => setShowHistory(!showHistory)}
+              title={showHistory ? "收起历史会话" : "展开历史会话"}
+            >
+              <IconSidebar size={14} />
+            </button>
+            <span className="gpt-header-title" style={{ marginLeft: "4px" }}>
+              {currentSession?.title || "AgentFlow 智能中枢"}
+            </span>
+          </div>
+
+          <div className="gpt-header-right">
+            {messages.length > 0 && (
+              <button
+                type="button"
+                className="apple-btn-secondary"
+                onClick={handleClearCurrentSession}
+                style={{ fontSize: "12px", padding: "4px 9px" }}
+              >
+                清空当前对话
+              </button>
+            )}
+            <button
+              type="button"
+              className="apple-btn-secondary"
+              onClick={handleNewSession}
+              style={{ fontSize: "12px", padding: "4px 9px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+            >
+              <IconPlus size={12} />
+              <span>新建会话</span>
+            </button>
+          </div>
+        </div>
+
+        {notification && (
+          <div className="gpt-notification-toast">
           {notification}
         </div>
       )}
@@ -480,58 +878,108 @@ export function ChatView({
               </div>
               <h2 className="gpt-hero-title">今天想推演或构建什么？</h2>
               <p className="gpt-hero-desc">
-                当前工作区：<strong>{activeWorkspace.name}</strong> · 接入源：<strong>{activeProvider.name}</strong>
+                当前工作区：<strong>{activeWorkspace.name}</strong> · 执行环境：<strong>{envTarget === "local" ? "本地" : (selectedServer?.name || "服务器")}</strong> · 接入源：<strong>{activeProvider.name}</strong>
               </p>
 
               <div className="gpt-prompt-grid">
-                <div
-                  className="gpt-prompt-card"
-                  onClick={() =>
-                    handleLaunchGrillMe(
-                      "多端离线数据同步与版本冲突解决",
-                      "设计本地缓存与网络恢复后的双向增量同步"
-                    )
-                  }
-                >
-                  <div className="card-tag">
-                    <IconFlame size={12} />
-                    <span>Grill-Me 需求推演</span>
-                  </div>
-                  <div className="card-text">探讨离线同步架构与版本冲突解决策略</div>
-                </div>
+                {envTarget === "server" ? (
+                  <>
+                    <div
+                      className="gpt-prompt-card"
+                      onClick={() => handleSendMessage("检查服务器资源利用率、负载与 Docker 容器状态")}
+                    >
+                      <div className="card-tag">
+                        <IconServer size={12} />
+                        <span>宿主机健康诊断</span>
+                      </div>
+                      <div className="card-text">检查远程主机 CPU/内存负载与容器存活状态</div>
+                    </div>
 
-                <div
-                  className="gpt-prompt-card"
-                  onClick={() => handleSendMessage("微服务多租户数据库隔离与 WAL 模式重构规划")}
-                >
-                  <div className="card-tag">
-                    <IconPlanning size={12} />
-                    <span>复杂工程立项</span>
-                  </div>
-                  <div className="card-text">微服务多租户数据库隔离与 WAL 模式方案</div>
-                </div>
+                    <div
+                      className="gpt-prompt-card"
+                      onClick={() => handleSendMessage("拉取主干最新代码并平滑重载核心服务容器")}
+                    >
+                      <div className="card-tag">
+                        <IconZap size={12} />
+                        <span>服务平滑更新</span>
+                      </div>
+                      <div className="card-text">拉取仓库最新构建产物并重载业务容器</div>
+                    </div>
 
-                <div
-                  className="gpt-prompt-card"
-                  onClick={() => handleSendMessage("为当前项目编写自动化回归测试套件")}
-                >
-                  <div className="card-tag">
-                    <IconZap size={12} />
-                    <span>快速派发任务</span>
-                  </div>
-                  <div className="card-text">在当前工作区编写自动化回归与单测套件</div>
-                </div>
+                    <div
+                      className="gpt-prompt-card"
+                      onClick={() => handleSendMessage("收集并分析最近 1 小时 Nginx 访问与错误日志")}
+                    >
+                      <div className="card-tag">
+                        <IconSparkles size={12} />
+                        <span>远程日志排查</span>
+                      </div>
+                      <div className="card-text">提取 Nginx 访问与服务异常日志进行智能归因</div>
+                    </div>
 
-                <div
-                  className="gpt-prompt-card"
-                  onClick={() => handleSendMessage("每天 02:00 自动拉取主干执行全量回归与测试")}
-                >
-                  <div className="card-tag">
-                    <IconSchedule size={12} />
-                    <span>创建定时自动化</span>
-                  </div>
-                  <div className="card-text">每天凌晨 02:00 自动拉取主干执行代码巡检</div>
-                </div>
+                    <div
+                      className="gpt-prompt-card"
+                      onClick={() => handleSendMessage("每天 03:00 自动清理过期临时镜像与审计日志")}
+                    >
+                      <div className="card-tag">
+                        <IconSchedule size={12} />
+                        <span>服务器自动化</span>
+                      </div>
+                      <div className="card-text">设定周期巡检与无用 Docker 镜像自动释放</div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div
+                      className="gpt-prompt-card"
+                      onClick={() =>
+                        handleLaunchGrillMe(
+                          "多端离线数据同步与版本冲突解决",
+                          "设计本地缓存与网络恢复后的双向增量同步"
+                        )
+                      }
+                    >
+                      <div className="card-tag">
+                        <IconFlame size={12} />
+                        <span>Grill-Me 需求推演</span>
+                      </div>
+                      <div className="card-text">探讨离线同步架构与版本冲突解决策略</div>
+                    </div>
+
+                    <div
+                      className="gpt-prompt-card"
+                      onClick={() => handleSendMessage("微服务多租户数据库隔离与 WAL 模式重构规划")}
+                    >
+                      <div className="card-tag">
+                        <IconPlanning size={12} />
+                        <span>复杂工程立项</span>
+                      </div>
+                      <div className="card-text">微服务多租户数据库隔离与 WAL 模式方案</div>
+                    </div>
+
+                    <div
+                      className="gpt-prompt-card"
+                      onClick={() => handleSendMessage("为当前项目编写自动化回归测试套件")}
+                    >
+                      <div className="card-tag">
+                        <IconZap size={12} />
+                        <span>快速派发任务</span>
+                      </div>
+                      <div className="card-text">在当前工作区编写自动化回归与单测套件</div>
+                    </div>
+
+                    <div
+                      className="gpt-prompt-card"
+                      onClick={() => handleSendMessage("每天 02:00 自动拉取主干执行全量回归与测试")}
+                    >
+                      <div className="card-tag">
+                        <IconSchedule size={12} />
+                        <span>创建定时自动化</span>
+                      </div>
+                      <div className="card-text">每天凌晨 02:00 自动拉取主干执行代码巡检</div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ) : (
@@ -687,6 +1135,58 @@ export function ChatView({
                         </div>
                       </div>
                     )}
+
+                    {/* Server Action Execution Card */}
+                    {m.serverAction && (
+                      <div className="gpt-card-artifact server-action-card">
+                        <div className="card-artifact-top">
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                              <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                <IconServer size={15} />
+                                {m.serverAction.title}
+                              </strong>
+                              <span className="server-target-tag">
+                                🖥️ {m.serverAction.serverName}
+                              </span>
+                              <span className="server-safety-tag">
+                                {m.serverAction.safetyLevel}
+                              </span>
+                            </div>
+                            <p style={{ fontSize: "12px", color: "#6e6e73", margin: "4px 0 0" }}>
+                              {m.serverAction.summary}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="gpt-btn-primary"
+                            disabled={busy}
+                            onClick={() => void handleDispatchServerAction(m.serverAction!)}
+                            style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
+                          >
+                            <IconZap size={12} />
+                            <span>在服务器派发执行</span>
+                          </button>
+                        </div>
+
+                        {/* Remote Host Info & Command Preview */}
+                        <div className="server-commands-box">
+                          <div className="server-commands-header">
+                            <span>目标宿主机: {m.serverAction.serverHost}</span>
+                            <span>执行用户: {m.serverAction.user}</span>
+                          </div>
+                          <div className="server-commands-code">
+                            {m.serverAction.commands.map((cmd, cIdx) => (
+                              <div key={cIdx} className="server-cmd-line">
+                                <span className="cmd-prompt">$</span>
+                                <span className="cmd-text">{cmd}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -710,109 +1210,77 @@ export function ChatView({
         </div>
       </div>
 
-      {/* Floating Bottom Input Dock with Sleek Aesthetic Selector Bar */}
+      {/* Floating Bottom Input Dock with Screenshot Style Envelope */}
       <div className="gpt-bottom-dock-wrapper">
-        <div className="gpt-floating-box">
-          {/* Aesthetic Options Pill Bar */}
-          <div className="gpt-dock-meta">
-            {/* Workspace Pill */}
+        <div className="chat-dock-envelope">
+          {/* 1. Context Strip (Top grey bar: 📁 简历  💻 本地  ⑂ master) */}
+          <div className="chat-attached-context-strip">
             <button
               type="button"
-              className="gpt-meta-pill"
+              className="context-strip-btn"
               onClick={() => setShowWorkspaceModal(true)}
-              title="切换工作区目录"
+              title="点击切换关联工程工作区"
             >
-              <span style={{ display: "inline-flex", alignItems: "center" }}>
-                <IconFolder size={13} />
-              </span>
-              <span style={{ fontWeight: 500 }}>{activeWorkspace.name}</span>
-              <span className="pill-arrow" style={{ display: "inline-flex", alignItems: "center" }}>
-                <IconChevronDown size={10} />
-              </span>
+              <IconFolder size={13} stroke="#38383a" />
+              <span>{activeWorkspace.name}</span>
             </button>
 
-            {/* Provider Pill */}
-            <button
-              type="button"
-              className="gpt-meta-pill"
-              onClick={() => setShowProviderModal(true)}
-              title="配置模型接入源 (本地检测 / 云端 API)"
-            >
-              <span style={{ display: "inline-flex", alignItems: "center" }}>
-                {activeProvider.isLocal ? <IconLaptop size={13} /> : <IconCloud size={13} />}
-              </span>
-              <span>{activeProvider.name.split(" ")[0]}</span>
-              <span className="pill-arrow" style={{ display: "inline-flex", alignItems: "center" }}>
-                <IconSettings size={11} />
-              </span>
-            </button>
+            <DrawerSelect
+              size="sm"
+              value={currentEnvValue}
+              onChange={(val) => {
+                if (val === "__add_server__" || val === "__manage_servers__") {
+                  setShowServerModal(true);
+                  return;
+                }
+                if (val === "local") {
+                  setEnvTarget("local");
+                  persistActiveEnv("local");
+                  setSelectedServerId(null);
+                  persistActiveServerId(null);
+                  showToast("已切换执行环境至本机 (Localhost)");
+                } else if (val.startsWith("server:::")) {
+                  const srvId = val.split(":::")[1];
+                  setEnvTarget("server");
+                  persistActiveEnv("server");
+                  setSelectedServerId(srvId);
+                  persistActiveServerId(srvId);
+                  const matched = servers.find((s) => s.id === srvId);
+                  showToast(`已切换执行环境至服务器【${matched?.name || "远程服务器"}】`);
+                }
+              }}
+              options={envOptions}
+              customLabel={envDisplayLabel}
+              triggerStyle={{
+                border: "none",
+                background: "transparent",
+                padding: "2px 6px",
+                fontSize: "12.5px",
+                color: "#1d1d1f",
+                fontWeight: 500,
+                gap: "5px",
+                minWidth: "auto",
+              }}
+            />
 
-            {/* Model Pill */}
-            <div style={{ position: "relative" }}>
-              <DrawerSelect
-                size="sm"
-                value={selectedModel}
-                onChange={(val) => setSelectedModel(val)}
-                options={activeProvider.models.map((m) => ({
-                  value: m,
-                  label: m,
-                  icon: <IconCpu size={12} stroke="#787774" />,
-                  description: m.includes("3.5") || m.includes("Claude")
-                    ? "代码生成与高精度推理"
-                    : m.includes("4o")
-                    ? "全能多模态通用模型"
-                    : "高速响应端点",
-                }))}
-                triggerStyle={{
-                  border: "1px solid var(--apple-border)",
-                  borderRadius: "6px",
-                  padding: "3px 8px",
-                  fontSize: "12px",
-                  background: "#ffffff",
-                }}
-              />
-            </div>
-
-            {/* Reasoning Level Pill */}
-            <div style={{ position: "relative" }}>
-              <DrawerSelect
-                size="sm"
-                value={selectedReasoning}
-                onChange={(val) => setSelectedReasoning(val)}
-                options={[
-                  { value: "快速 (Low)", label: "快速 (Low)", description: "超快响应，执行轻量级任务" },
-                  { value: "平衡 (Medium)", label: "平衡 (Medium)", description: "速度与推理兼顾" },
-                  { value: "深度 (High)", label: "深度 (High)", description: "全链条长思考与严格自检" },
-                ]}
-                triggerStyle={{
-                  border: "1px solid var(--apple-border)",
-                  borderRadius: "6px",
-                  padding: "3px 8px",
-                  fontSize: "12px",
-                  background: "#ffffff",
-                }}
-              />
+            <div className="context-strip-info" title="当前工作区 Git 分支">
+              <IconGitBranch size={13} stroke="#38383a" />
+              <span>{activeWorkspace.branch || "master"}</span>
             </div>
           </div>
 
-          {/* Textarea + Circular Send Button */}
-          <form
-            className="gpt-input-row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSendMessage();
-            }}
-          >
+          {/* 2. Floating Main White Card (Screenshot Exact) */}
+          <div className="chat-floating-main-card">
             <textarea
               ref={textareaRef}
-              className="gpt-textarea"
-              placeholder={`给 AgentFlow 发送指令、推演需求或在【${activeWorkspace.name}】中派发任务…`}
-              rows={1}
+              className="chat-screen-textarea"
+              placeholder="随心输入"
+              rows={2}
               value={inputText}
               onChange={(e) => {
                 setInputText(e.target.value);
                 e.target.style.height = "auto";
-                e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -822,40 +1290,132 @@ export function ChatView({
               }}
             />
 
-            <button
-              type="submit"
-              className={`gpt-send-circle-btn ${inputText.trim() && !busy ? "active" : ""}`}
-              disabled={busy || !inputText.trim()}
-              title="发送 (Enter)"
-              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-            >
-              <IconSend size={14} />
-            </button>
-          </form>
-        </div>
+            {/* Bottom Actions Row */}
+            <div className="chat-screen-bottom-bar">
+              {/* Left: + and 帮我批准 */}
+              <div className="chat-bottom-left">
+                <button
+                  type="button"
+                  className="chat-plus-btn"
+                  onClick={() => handleSendMessage("请分析当前工作区架构并生成优化方案")}
+                  title="附加工程上下文或快捷提示词"
+                >
+                  <IconPlus size={16} stroke="#1d1d1f" />
+                </button>
 
-        <div className="gpt-footer-disclaimer">
-          AgentFlow 可能会产生工程建议，任务将在对应工作区的独立 Git 分支中隔离执行。
+                <button
+                  type="button"
+                  className={`chat-approve-pill ${autoApprove ? "active" : ""}`}
+                  onClick={() => {
+                    const nextState = !autoApprove;
+                    setAutoApprove(nextState);
+                    showToast(
+                      nextState
+                        ? "已开启【帮我批准】模式：AgentFlow 将自动推进合规步骤"
+                        : "已关闭自动批准模式"
+                    );
+                  }}
+                  title="自动批准模式：允许 Agent 自动推进通过测试门禁与非阻断性审查"
+                >
+                  <IconCheckCircle size={13} stroke={autoApprove ? "#0071e3" : "#636366"} />
+                  <span>帮我批准</span>
+                </button>
+              </div>
+
+              {/* Right: Model dropdown, Mic, and Waveform Circle */}
+              <div className="chat-bottom-right">
+                <DrawerSelect
+                  size="sm"
+                  value={`${selectedModel}:::${selectedReasoning.startsWith("深度") ? "深度" : "轻度"}`}
+                  onChange={(val) => {
+                    const [m, r] = val.split(":::");
+                    if (m) setSelectedModel(m);
+                    if (r) setSelectedReasoning(r === "深度" ? "深度 (High)" : "快速 (Low)");
+                  }}
+                  options={combinedModelOptions}
+                  customLabel={`${modelShortName} ${reasoningShort}`}
+                  triggerStyle={{
+                    border: "none",
+                    background: "transparent",
+                    padding: "4px 8px",
+                    fontSize: "12.5px",
+                    color: "#48484a",
+                    fontWeight: 500,
+                  }}
+                />
+
+                <button
+                  type="button"
+                  className="chat-mic-btn"
+                  onClick={() => showToast("语音输入麦克风已就绪")}
+                  title="语音输入"
+                >
+                  <IconMicrophone size={16} stroke="#48484a" />
+                </button>
+
+                <button
+                  type="button"
+                  className="chat-waveform-btn"
+                  onClick={() => handleSendMessage()}
+                  disabled={busy || !inputText.trim()}
+                  title="发送 (Enter)"
+                >
+                  <IconWaveform size={16} stroke="#ffffff" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="gpt-footer-disclaimer">
+            AgentFlow 可能会产生工程建议，任务将在对应工作区的独立 Git 分支中隔离执行。
+          </div>
         </div>
       </div>
-
-      {/* Workspace Management Modal */}
-      {showWorkspaceModal && (
-        <WorkspaceModal
-          activeWorkspace={activeWorkspace}
-          onSelectWorkspace={(ws) => setActiveWorkspace(ws)}
-          onClose={() => setShowWorkspaceModal(false)}
-        />
-      )}
-
-      {/* Provider / Adapter Settings Modal */}
-      {showProviderModal && (
-        <ProviderModal
-          activeProvider={activeProvider}
-          onSelectProvider={handleSelectProvider}
-          onClose={() => setShowProviderModal(false)}
-        />
-      )}
     </div>
+
+    {/* Workspace Management Modal */}
+    {showWorkspaceModal && (
+      <WorkspaceModal
+        activeWorkspace={activeWorkspace}
+        onSelectWorkspace={(ws) => setActiveWorkspace(ws)}
+        onClose={() => setShowWorkspaceModal(false)}
+      />
+    )}
+
+    {/* Server Management Modal */}
+    {showServerModal && (
+      <ServerModal
+        selectedServerId={selectedServerId}
+        onSelectServer={(srv) => {
+          setEnvTarget("server");
+          persistActiveEnv("server");
+          setSelectedServerId(srv.id);
+          persistActiveServerId(srv.id);
+          setServers(getStoredServers());
+          showToast(`已切换执行环境至服务器【${srv.name}】`);
+        }}
+        onSelectLocal={() => {
+          setEnvTarget("local");
+          persistActiveEnv("local");
+          setSelectedServerId(null);
+          persistActiveServerId(null);
+          showToast("已切换执行环境至本机 (Localhost)");
+        }}
+        onClose={() => {
+          setShowServerModal(false);
+          setServers(getStoredServers());
+        }}
+      />
+    )}
+
+    {/* Provider / Adapter Settings Modal */}
+    {showProviderModal && (
+      <ProviderModal
+        activeProvider={activeProvider}
+        onSelectProvider={handleSelectProvider}
+        onClose={() => setShowProviderModal(false)}
+      />
+    )}
+  </div>
   );
 }
