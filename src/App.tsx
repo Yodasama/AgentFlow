@@ -115,7 +115,7 @@ export function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main>
+      <main className={activeTab === "对话" && !selectedRunId ? "main-chat-tab" : ""}>
         {error && (
           <div className="apple-alert-box error" style={{ marginBottom: "16px" }}>
             {error}

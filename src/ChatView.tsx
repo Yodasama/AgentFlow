@@ -17,6 +17,9 @@ import {
   setActiveEnv as persistActiveEnv,
   getActiveServerId,
   setActiveServerId as persistActiveServerId,
+  getWorkspaceBranches,
+  addWorkspaceBranch,
+  updateWorkspaceBranch,
 } from "./workspaces";
 import { WorkspaceModal } from "./WorkspaceModal";
 import { ServerModal } from "./ServerModal";
@@ -198,6 +201,15 @@ export function ChatView({
   const [selectedServerId, setSelectedServerId] = useState<string | null>(() => getActiveServerId());
   const [showServerModal, setShowServerModal] = useState(false);
   const selectedServer = servers.find((s) => s.id === selectedServerId) || null;
+
+  // Git Branch selection
+  const [currentBranch, setCurrentBranch] = useState(activeWorkspace.branch || "main");
+  const [branches, setBranches] = useState<string[]>(() => getWorkspaceBranches(activeWorkspace));
+
+  useEffect(() => {
+    setCurrentBranch(activeWorkspace.branch || "main");
+    setBranches(getWorkspaceBranches(activeWorkspace));
+  }, [activeWorkspace]);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const s = sessions.find((item) => item.id === activeSessionId) || sessions[0];
@@ -773,6 +785,42 @@ export function ChatView({
   const currentEnvValue = envTarget === "local" ? "local" : `server:::${selectedServerId || ""}`;
   const envDisplayLabel = envTarget === "local" ? "本地" : (selectedServer?.name || "服务器");
 
+  const branchOptions: DrawerSelectOption[] = [
+    ...branches.map((b) => ({
+      value: b,
+      label: b,
+      description: b === currentBranch ? "当前工作区分支" : `切换至 ${b} 分支`,
+      icon: <IconGitBranch size={13} stroke="#787774" />,
+      badge: b === currentBranch ? "当前分支" : undefined,
+    })),
+    {
+      value: "__create_branch__",
+      label: "+ 新建分支…",
+      description: "基于当前工作区切出新分支并切换",
+      icon: <IconPlus size={13} stroke="#787774" />,
+    },
+  ];
+
+  const handleSelectBranch = (val: string) => {
+    if (val === "__create_branch__") {
+      const name = window.prompt("请输入新分支名称 (例如: feature/workflow):");
+      if (name && name.trim()) {
+        const clean = name.trim();
+        const updatedBranches = addWorkspaceBranch(activeWorkspace.id, clean);
+        setBranches(updatedBranches);
+        setCurrentBranch(clean);
+        const updatedWs = updateWorkspaceBranch(activeWorkspace.id, clean);
+        setActiveWorkspace(updatedWs);
+        showToast(`已切出并切换至新分支【${clean}】`);
+      }
+      return;
+    }
+    setCurrentBranch(val);
+    const updatedWs = updateWorkspaceBranch(activeWorkspace.id, val);
+    setActiveWorkspace(updatedWs);
+    showToast(`已切换至分支【${val}】`);
+  };
+
   return (
     <div className="gpt-chat-root">
       {/* Left Collapsible History Sidebar */}
@@ -1263,10 +1311,23 @@ export function ChatView({
               }}
             />
 
-            <div className="context-strip-info" title="当前工作区 Git 分支">
-              <IconGitBranch size={13} stroke="#38383a" />
-              <span>{activeWorkspace.branch || "master"}</span>
-            </div>
+            <DrawerSelect
+              size="sm"
+              value={currentBranch}
+              onChange={handleSelectBranch}
+              options={branchOptions}
+              customLabel={currentBranch}
+              triggerStyle={{
+                border: "none",
+                background: "transparent",
+                padding: "2px 6px",
+                fontSize: "12.5px",
+                color: "#1d1d1f",
+                fontWeight: 500,
+                gap: "5px",
+                minWidth: "auto",
+              }}
+            />
           </div>
 
           {/* 2. Floating Main White Card (Screenshot Exact) */}

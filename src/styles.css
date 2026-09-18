@@ -232,6 +232,13 @@ main {
   padding: 30px 44px;
 }
 
+main.main-chat-tab {
+  padding: 0;
+  overflow: hidden;
+  height: 100vh;
+}
+
+
 /* Page Headers */
 .page-header-row {
   display: flex;
@@ -2636,12 +2643,11 @@ h1 {
 .gpt-chat-root {
   display: flex;
   flex-direction: row;
-  height: calc(100vh - 44px);
+  height: 100vh;
+  width: 100%;
   position: relative;
   background: #ffffff;
-  border-radius: var(--apple-radius);
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
 /* Collapsible History Sidebar */
@@ -2665,7 +2671,10 @@ h1 {
 }
 
 .history-sidebar-header {
-  padding: 12px 14px;
+  height: 52px;
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: 0 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2832,7 +2841,10 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 22px;
+  padding: 0 22px;
+  height: 52px;
+  min-height: 52px;
+  box-sizing: border-box;
   background: #ffffff;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   z-index: 10;

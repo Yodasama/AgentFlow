@@ -231,4 +231,41 @@ export function updateServer(id: string, updates: Partial<ServerConfig>): Server
   return updated;
 }
 
+/* ============================================
+   Workspace Branch Management
+   ============================================ */
+
+export function getWorkspaceBranches(ws: Workspace): string[] {
+  const DEFAULT_BRANCHES = ["Gemini", "main", "master", "dev", "feature/preview"];
+  try {
+    const raw = localStorage.getItem(`agentflow_ws_branches_${ws.id}`);
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list) && list.length > 0) {
+        return Array.from(new Set([ws.branch, ...list].filter(Boolean)));
+      }
+    }
+  } catch {}
+  return Array.from(new Set([ws.branch, ...DEFAULT_BRANCHES].filter(Boolean)));
+}
+
+export function addWorkspaceBranch(wsId: string, newBranch: string): string[] {
+  const ws = getStoredWorkspaces().find((w) => w.id === wsId);
+  const current = ws ? getWorkspaceBranches(ws) : ["main"];
+  const updated = Array.from(new Set([newBranch.trim(), ...current]));
+  localStorage.setItem(`agentflow_ws_branches_${wsId}`, JSON.stringify(updated));
+  return updated;
+}
+
+export function updateWorkspaceBranch(wsId: string, branchName: string): Workspace {
+  const list = getStoredWorkspaces();
+  const updated = list.map((w) =>
+    w.id === wsId ? { ...w, branch: branchName.trim() } : w
+  );
+  saveWorkspaces(updated);
+  addWorkspaceBranch(wsId, branchName);
+  return updated.find((w) => w.id === wsId) || updated[0];
+}
+
+
 
