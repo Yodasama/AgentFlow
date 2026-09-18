@@ -18,7 +18,7 @@ export const defaultAgentRoles: AgentRoleConfig[] = [
     id: "role-dev",
     roleName: "开发编写",
     icon: "👨‍💻",
-    description: "专注代码编写、重构与 Checkpoint 提交，严格遵循单一职责与语言最佳实践。",
+    description: "专注代码编写、重构与 Checkpoint 提交，遵循语言最佳实践。",
     defaultModel: "Claude 3.5 Sonnet",
     defaultReasoning: "深度",
     systemPrompt: `你是一名资深全栈工程师。你的职责是根据任务需求和架构设计，编写健壮、可测试、符合规范的代码。
@@ -31,7 +31,7 @@ export const defaultAgentRoles: AgentRoleConfig[] = [
     id: "role-review",
     roleName: "代码审查",
     icon: "🔍",
-    description: "专注代码静态检查、安全性审计、边界条件审查，以阻断级（blocking）和警告级提出严谨意见。",
+    description: "专注代码静态检查、安全性审计与边界隐患审查，提出阻断级和警告级意见。",
     defaultModel: "Claude 3.5 Sonnet",
     defaultReasoning: "极致思维",
     systemPrompt: `你是一名严谨的安全与架构代码审查员。
@@ -44,7 +44,7 @@ export const defaultAgentRoles: AgentRoleConfig[] = [
     id: "role-test",
     roleName: "测试验证",
     icon: "🧪",
-    description: "负责单元测试、集成测试驱动以及回归测试验证，捕获代码异常并生成测试报告。",
+    description: "负责单元测试、集成测试驱动以及回归验证，捕获代码异常并生成测试报告。",
     defaultModel: "自动化环境 (Test Runner)",
     defaultReasoning: "标准",
     systemPrompt: `负责运行自动化测试用例，捕获测试失败的堆栈信息。
@@ -56,7 +56,7 @@ export const defaultAgentRoles: AgentRoleConfig[] = [
     id: "role-arch",
     roleName: "需求拆解",
     icon: "📐",
-    description: "分析复合型大需求，产出清晰的模块拆解、领域模型与依赖关系。",
+    description: "分析复合型大需求，产出清晰的模块切分、领域模型与依赖关系。",
     defaultModel: "GPT-4o",
     defaultReasoning: "深度",
     systemPrompt: `你是一名系统架构师。负责把模糊需求分解为清晰的阶段节点。
@@ -107,7 +107,7 @@ export function AgentManagerView() {
 
   const triggerSaveNotification = () => {
     setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 1600);
+    setTimeout(() => setSaveSuccess(false), 1500);
   };
 
   const updateSelectedRole = (patch: Partial<AgentRoleConfig>) => {
@@ -156,29 +156,33 @@ export function AgentManagerView() {
   };
 
   return (
-    <div className="agent-manager-page">
-      {/* Page Header */}
-      <div className="page-header-row">
+    <div className="agent-manager-page compact">
+      {/* Compact Page Header */}
+      <div className="page-header-row" style={{ marginBottom: "16px" }}>
         <div>
-          <h1>Agent 功能角色库</h1>
-          <p className="page-subtitle">
-            管理工作流中可担任的功能角色与预设 Prompt 指令。在任务画布添加节点时可直接调用，具体参数与提示词调试在任务中进行。
+          <h1 style={{ fontSize: "22px" }}>Agent 角色库</h1>
+          <p className="page-subtitle" style={{ fontSize: "12px" }}>
+            管理工作流中可担任的功能角色与预设 Prompt 指令。在任务画布添加节点时直接选用，具体参数与提示词调试在任务中进行。
           </p>
         </div>
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           {saveSuccess && (
-            <span className="agent-saved-pill">✓ 角色配置已自动保存</span>
+            <span className="agent-saved-pill" style={{ fontSize: "10px", padding: "2px 8px" }}>
+              ✓ 已自动保存
+            </span>
           )}
           <button
             className="apple-btn-secondary"
             type="button"
+            style={{ fontSize: "12px", padding: "5px 10px" }}
             onClick={handleResetDefaults}
           >
-            恢复官方预设角色
+            恢复官方预设
           </button>
           <button
             className="apple-btn-primary"
             type="button"
+            style={{ fontSize: "12px", padding: "5px 12px" }}
             onClick={() => setShowAddModal(true)}
           >
             + 新增角色
@@ -186,10 +190,10 @@ export function AgentManagerView() {
         </div>
       </div>
 
-      {/* Role Management Split Layout */}
-      <div className="agent-studio-layout">
-        {/* Left: Role List */}
-        <div className="agent-roster-column">
+      {/* Compact Split Studio Layout (Fits on One Page) */}
+      <div className="agent-studio-layout compact-layout">
+        {/* Left: Compact Role List */}
+        <div className="agent-roster-column compact-list">
           <div className="roster-header">
             <span>预设功能角色 ({roles.length})</span>
           </div>
@@ -200,26 +204,27 @@ export function AgentManagerView() {
               return (
                 <div
                   key={role.id}
-                  className={`agent-roster-card ${isActive ? "active" : ""}`}
+                  className={`agent-roster-card compact-card ${isActive ? "active" : ""}`}
                   onClick={() => setSelectedRoleId(role.id)}
                 >
-                  <div className="roster-card-top">
-                    <div className="roster-avatar">{role.icon}</div>
-                    <div className="roster-info">
-                      <strong>{role.roleName}</strong>
-                      <span className="roster-role-tag">
-                        {role.isBuiltin ? "内置角色" : "自定义角色"}
-                      </span>
+                  <div className="roster-card-top" style={{ gap: "8px" }}>
+                    <span style={{ fontSize: "18px" }}>{role.icon}</span>
+                    <div className="roster-info" style={{ flex: 1 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <strong style={{ fontSize: "13px" }}>{role.roleName}</strong>
+                        <span className="roster-role-tag" style={{ fontSize: "10px" }}>
+                          {role.isBuiltin ? "内置" : "自定义"}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: "4px", marginTop: "3px" }}>
+                        <span className="meta-chip" style={{ fontSize: "9px", padding: "1px 5px" }}>
+                          🤖 {role.defaultModel.split(" ")[0]}
+                        </span>
+                        <span className="meta-chip" style={{ fontSize: "9px", padding: "1px 5px" }}>
+                          🧠 {role.defaultReasoning}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-
-                  <p style={{ fontSize: "11px", color: "#86868b", lineHeight: 1.4 }}>
-                    {role.description}
-                  </p>
-
-                  <div className="roster-card-meta">
-                    <span className="meta-chip">🤖 {role.defaultModel.split(" ")[0]}</span>
-                    <span className="meta-chip">🧠 {role.defaultReasoning}</span>
                   </div>
                 </div>
               );
@@ -227,16 +232,17 @@ export function AgentManagerView() {
           </div>
         </div>
 
-        {/* Right: Selected Role Information & Preset Prompt */}
-        <div className="agent-inspector-column">
-          {/* Header Card */}
-          <div className="inspector-card">
-            <div className="inspector-header-row">
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <span style={{ fontSize: "28px" }}>{selected.icon}</span>
-                <div>
+        {/* Right: Consolidated Role Inspector (Single cohesive card) */}
+        <div className="agent-inspector-column compact-inspector">
+          <div className="inspector-card compact-editor-card">
+            {/* Header: Icon + Name + Desc + Delete */}
+            <div className="inspector-header-row" style={{ paddingBottom: "12px", borderBottom: "1px solid #f0f0f2" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1 }}>
+                <span style={{ fontSize: "24px" }}>{selected.icon}</span>
+                <div style={{ flex: 1 }}>
                   <input
                     className="agent-title-input"
+                    style={{ fontSize: "16px", padding: "2px 0" }}
                     value={selected.roleName}
                     onChange={(e) => updateSelectedRole({ roleName: e.target.value })}
                   />
@@ -245,8 +251,8 @@ export function AgentManagerView() {
                       border: 0,
                       fontSize: "12px",
                       color: "#86868b",
-                      marginTop: "4px",
-                      width: "100%",
+                      marginTop: "2px",
+                      width: "90%",
                       outline: "none",
                       background: "transparent",
                     }}
@@ -261,86 +267,87 @@ export function AgentManagerView() {
                 <button
                   className="apple-btn-danger"
                   type="button"
+                  style={{ fontSize: "11px", padding: "4px 8px" }}
                   onClick={() => handleDeleteRole(selected.id)}
                 >
-                  删除此角色
+                  删除角色
                 </button>
               )}
             </div>
-          </div>
 
-          {/* Defaults: Model & Reasoning Level */}
-          <div className="inspector-card">
-            <div className="card-section-title">
-              <span>该角色推荐配置 (在任务节点中可直接选用)</span>
-              <small>任务中添加该功能节点时，将自动填充推荐的模型引擎与推理深度</small>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", color: "#86868b" }}>
-                推荐模型引擎
+            {/* Middle: Recommended Engine & Reasoning Level */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", margin: "12px 0" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "11px", color: "#86868b", fontWeight: 500 }}>
+                推荐模型引擎 (画布添加节点时默认选用)
                 <select
                   value={selected.defaultModel}
                   onChange={(e) => updateSelectedRole({ defaultModel: e.target.value })}
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
+                    padding: "6px 10px",
+                    borderRadius: "6px",
                     border: "1px solid #e5e5ea",
                     background: "#ffffff",
+                    fontSize: "12px",
                   }}
                 >
-                  <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet</option>
-                  <option value="GPT-4o">GPT-4o</option>
-                  <option value="DeepSeek-R1">DeepSeek-R1</option>
+                  <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet (长上下文与架构)</option>
+                  <option value="GPT-4o">GPT-4o (逻辑与拆解)</option>
+                  <option value="DeepSeek-R1">DeepSeek-R1 (深度思维链)</option>
                   <option value="自动化环境 (Test Runner)">自动化环境 (Test Runner)</option>
                   <option value="人工确认 (Human In Loop)">人工确认 (Human In Loop)</option>
                 </select>
               </label>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", color: "#86868b" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "11px", color: "#86868b", fontWeight: 500 }}>
                 推荐推理深度
                 <select
                   value={selected.defaultReasoning}
                   onChange={(e) => updateSelectedRole({ defaultReasoning: e.target.value })}
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
+                    padding: "6px 10px",
+                    borderRadius: "6px",
                     border: "1px solid #e5e5ea",
                     background: "#ffffff",
+                    fontSize: "12px",
                   }}
                 >
-                  <option value="快速">快速 (Low)</option>
-                  <option value="标准">标准 (Medium)</option>
-                  <option value="深度">深度 (High)</option>
-                  <option value="极致思维">极致思维 (Extreme)</option>
-                  <option value="最高">最高 (Human)</option>
+                  <option value="快速">快速 (Low · 1~2 步快速响应)</option>
+                  <option value="标准">标准 (Medium · 4~8 步平衡思考)</option>
+                  <option value="深度">深度 (High · 16~32 步多轮推演)</option>
+                  <option value="极致思维">极致思维 (Extreme · 全量思维链)</option>
+                  <option value="最高">最高 (Human · 人工严谨审核)</option>
                 </select>
               </label>
             </div>
-          </div>
 
-          {/* Role System Prompt */}
-          <div className="inspector-card">
-            <div className="card-section-title">
-              <span>角色专属预设 Prompt</span>
-              <small>定义该功能角色的执行准则、工程底线与行为模式。任务启动时作为基础系统指令注入。</small>
-            </div>
+            {/* Bottom: Role System Prompt Studio */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "11px", fontWeight: 600, color: "#86868b" }}>
+                  角色专属预设 Prompt 指令
+                </span>
+                <span style={{ fontSize: "10px", color: "#86868b" }}>
+                  字符数：{selected.systemPrompt.length}
+                </span>
+              </div>
 
-            <textarea
-              className="apple-prompt-editor"
-              rows={10}
-              value={selected.systemPrompt}
-              onChange={(e) => updateSelectedRole({ systemPrompt: e.target.value })}
-              placeholder="编写该功能角色的系统指令与原则…"
-            />
+              <textarea
+                className="apple-prompt-editor"
+                rows={8}
+                style={{ fontSize: "11.5px", padding: "10px", minHeight: "170px" }}
+                value={selected.systemPrompt}
+                onChange={(e) => updateSelectedRole({ systemPrompt: e.target.value })}
+                placeholder="编写该功能角色的系统指令与原则…"
+              />
 
-            <div className="prompt-footer-row">
-              <span style={{ fontSize: "11px", color: "#86868b" }}>
-                字符数：{selected.systemPrompt.length}
-              </span>
-              <span style={{ fontSize: "11px", color: "#24a159" }}>
-                ✓ 角色指令已自动保存，可在任务中直接选用
-              </span>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "2px" }}>
+                <span style={{ fontSize: "10px", color: "#86868b" }}>
+                  提示：可在任务内随时针对具体执行目标进行微调。
+                </span>
+                <span style={{ fontSize: "10px", color: "#24a159" }}>
+                  ✓ 修改已自动同步
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -349,14 +356,14 @@ export function AgentManagerView() {
       {/* Modal: Add Custom Role */}
       {showAddModal && (
         <div className="apple-modal-backdrop" onClick={() => setShowAddModal(false)}>
-          <div className="apple-modal-card" onClick={(e) => e.stopPropagation()}>
+          <div className="apple-modal-card" style={{ width: "460px" }} onClick={(e) => e.stopPropagation()}>
             <h3>新增功能角色</h3>
-            <p style={{ fontSize: "13px", color: "#86868b", marginTop: "2px" }}>
+            <p style={{ fontSize: "12px", color: "#86868b", marginTop: "2px" }}>
               创建专属的功能担任角色，设置角色定位与预设 Prompt。
             </p>
 
-            <form onSubmit={handleAddRole} className="modal-body-form" style={{ marginTop: "12px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "60px 1fr", gap: "10px" }}>
+            <form onSubmit={handleAddRole} className="modal-body-form" style={{ marginTop: "10px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "50px 1fr", gap: "8px" }}>
                 <label>
                   图标
                   <input
@@ -386,7 +393,7 @@ export function AgentManagerView() {
                 />
               </label>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                 <label>
                   推荐模型引擎
                   <select
@@ -417,7 +424,7 @@ export function AgentManagerView() {
               <label>
                 预设 Prompt 指令
                 <textarea
-                  rows={4}
+                  rows={3}
                   placeholder="定义该角色执行时的系统指令准则…"
                   value={newPrompt}
                   onChange={(e) => setNewPrompt(e.target.value)}

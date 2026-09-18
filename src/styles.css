@@ -1808,3 +1808,112 @@ h1 {
   font-size: 12px;
   color: var(--apple-text-secondary);
 }
+
+/* Time Widget & Environment Context in Schedules */
+.time-widget-box {
+  background: var(--apple-card-subtle);
+  border: 1px solid var(--apple-border-light);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 6px;
+}
+
+.field-subhead {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--apple-text-primary);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.spec-preview-bar {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--apple-border-light);
+  font-size: 11px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--apple-text-secondary);
+}
+
+.spec-preview-bar strong {
+  color: var(--apple-blue);
+}
+
+.spec-preview-bar code {
+  font-family: monospace;
+  color: var(--apple-text-secondary);
+}
+
+.env-context-box {
+  background: var(--apple-card-subtle);
+  border: 1px solid var(--apple-border-light);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 6px;
+}
+
+.remote-env-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.env-assurance-note {
+  font-size: 11px;
+  color: #1b7a43;
+  background: #eafaf1;
+  border: 1px solid rgba(36, 161, 89, 0.25);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  line-height: 1.45;
+}
+
+.env-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.env-tag.local {
+  background: #f0f0f4;
+  color: var(--apple-text-secondary);
+}
+
+.env-tag.remote {
+  background: var(--apple-blue-bg);
+  color: var(--apple-blue);
+  font-family: monospace;
+}
+
+/* Compact Agent Studio Styles */
+.agent-manager-page.compact {
+  gap: 12px;
+}
+
+.compact-layout {
+  grid-template-columns: 260px 1fr !important;
+  gap: 16px !important;
+}
+
+.compact-list .roster-cards-list {
+  gap: 6px !important;
+}
+
+.compact-card {
+  padding: 8px 12px !important;
+  border-radius: 8px !important;
+  gap: 4px !important;
+}
+
+.compact-inspector {
+  gap: 8px !important;
+}
+
+.compact-editor-card {
+  padding: 14px 18px !important;
+}
