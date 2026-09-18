@@ -8,15 +8,19 @@ import { TaskDetailView } from "./TaskDetailView";
 import { AgentManagerView } from "./AgentManagerView";
 import { SchedulesView } from "./SchedulesView";
 import { PlanningView } from "./PlanningView";
+import { ChatView } from "./ChatView";
 
-const navigation = ["任务", "项目规划", "定时任务"];
+const navigation = ["对话", "任务", "项目规划", "定时任务"];
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<string>("任务");
+  const [activeTab, setActiveTab] = useState<string>("对话");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runs, setRuns] = useState<RunSummary[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [busy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Cross-module handover for Grill-Me: { title, description }
+  const [grillTopic, setGrillTopic] = useState<{ title: string; description: string } | null>(null);
 
   const refreshRuns = useCallback(async () => {
     try {
@@ -51,7 +55,12 @@ export function App() {
 
   const handleTabClick = (item: string) => {
     setActiveTab(item);
-    // When clicking a tab from detail view, return to list view for that tab
+    setSelectedRunId(null);
+  };
+
+  const handleStartGrillMeFromPlanning = (title: string, description: string) => {
+    setGrillTopic({ title, description });
+    setActiveTab("对话");
     setSelectedRunId(null);
   };
 
@@ -66,7 +75,7 @@ export function App() {
           </div>
         </div>
 
-        {/* Main Navigation: 任务, 项目规划, 定时任务 */}
+        {/* Main Navigation: 对话, 任务, 项目规划, 定时任务 */}
         <nav aria-label="主导航">
           {navigation.map((item) => (
             <button
@@ -75,6 +84,7 @@ export function App() {
               type="button"
               onClick={() => handleTabClick(item)}
             >
+              {item === "对话" && <span className="nav-icon">💬</span>}
               {item === "任务" && <span className="nav-icon">📋</span>}
               {item === "项目规划" && <span className="nav-icon">🧭</span>}
               {item === "定时任务" && <span className="nav-icon">⏰</span>}
@@ -83,7 +93,7 @@ export function App() {
           ))}
         </nav>
 
-        {/* Agent Management pinned at the very bottom of sidebar */}
+        {/* Agent Role Management pinned at the very bottom of sidebar */}
         <div className="sidebar-bottom">
           <button
             className={activeTab === "Agent" && !selectedRunId ? "active" : ""}
@@ -113,6 +123,16 @@ export function App() {
           />
         ) : (
           <>
+            {activeTab === "对话" && (
+              <ChatView
+                onNavigateToRun={handleSelectRun}
+                onNavigateToTab={(tab) => setActiveTab(tab)}
+                onRefreshRuns={refreshRuns}
+                initialGrillTopic={grillTopic}
+                onClearGrillTopic={() => setGrillTopic(null)}
+              />
+            )}
+
             {activeTab === "任务" && (
               <TasksListView
                 runs={runs}
@@ -126,6 +146,8 @@ export function App() {
               <PlanningView
                 onNavigateToRun={handleSelectRun}
                 onRefreshRuns={refreshRuns}
+                onStartGrillMe={handleStartGrillMeFromPlanning}
+                onNavigateToTab={(tab) => setActiveTab(tab)}
               />
             )}
 

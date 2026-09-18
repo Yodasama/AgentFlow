@@ -23,24 +23,17 @@ interface ScheduleLogRecord {
   errorMessage?: string;
 }
 
-export interface ScheduleEnvConfig {
-  envType: "local" | "remote";
-  remoteHost?: string;
-  remotePort?: number;
-  remoteUser?: string;
-  remoteDir?: string;
-  authMethod?: string;
-  preCommand?: string;
-}
+const modelOptions = [
+  { id: "claude-3-5-sonnet", label: "Claude 3.5 Sonnet", desc: "长上下文与高精度代码" },
+  { id: "gpt-4o", label: "GPT-4o", desc: "全能多模态与通用推理" },
+  { id: "gemini-1-5-pro", label: "Gemini 1.5 Pro", desc: "复杂长链条与分析" },
+  { id: "deepseek-v3", label: "DeepSeek V3", desc: "快速高性价比执行" },
+];
 
-const SCHEDULE_ENV_STORAGE_KEY = "agentflow_schedule_env_configs_v1";
-
-const agentNodeOptions = [
-  { id: "agent-dev", label: "核心开发 Agent (Claude 3.5 Sonnet)" },
-  { id: "agent-review", label: "严苛审查 Agent (Claude 3.5 Sonnet)" },
-  { id: "agent-test", label: "自动化测试 Agent (Test Runner)" },
-  { id: "agent-arch", label: "架构规划 Agent (GPT-4o)" },
-  { id: "agent-ops", label: "系统运维与巡检 Agent (Local/SSH Runner)" },
+const reasoningOptions = [
+  { id: "low", label: "快速 (Low)" },
+  { id: "medium", label: "平衡 (Medium)" },
+  { id: "high", label: "深度 (High)" },
 ];
 
 export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
@@ -48,46 +41,38 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  // New Schedule Modal
+  // New Schedule Modal (Feishu/Apple Minimalist Style)
   const [showAddModal, setShowAddModal] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedModel, setSelectedModel] = useState(modelOptions[0].label);
+  const [selectedReasoning, setSelectedReasoning] = useState(reasoningOptions[2].label);
 
-  // 1. Time Widget State (时间小组件手动点选，完全抛弃 Cron)
-  const [frequency, setFrequency] = useState<"daily" | "workdays" | "weekly" | "hourly">("daily");
-  const [timePickerValue, setTimePickerValue] = useState("02:00");
-  const [weekdayValue, setWeekdayValue] = useState("1"); // 1 = Monday
+  // Time & Repeat
+  const [presetTimeTag, setPresetTimeTag] = useState("每天 02:00");
+  const [isCustomTime, setIsCustomTime] = useState(false);
+  const [customFrequency, setCustomFrequency] = useState<"daily" | "workdays" | "weekly" | "hourly">("daily");
+  const [customTimeVal, setCustomTimeVal] = useState("02:00");
+  const [customWeekday, setCustomWeekday] = useState("1");
+  const [isRepeating, setIsRepeating] = useState(true);
 
-  // 2. Task Description & Assigned Agent Node
-  const [taskDescription, setTaskDescription] = useState("");
-  const [assignedAgent, setAssignedAgent] = useState(agentNodeOptions[2].label); // Default: 测试 Agent
+  // Subtasks & Attachments (Optional fields as requested)
+  const [showSubtasks, setShowSubtasks] = useState(false);
+  const [subtasks, setSubtasks] = useState<string[]>([]);
+  const [showAttachment, setShowAttachment] = useState(false);
+  const [attachmentPath, setAttachmentPath] = useState("");
 
-  // 3. Execution Target Environment Context (解决服务器信息与自然语言跑偏的担忧)
-  const [targetEnvType, setTargetEnvType] = useState<"local" | "remote">("local");
-  const [remoteHost, setRemoteHost] = useState("");
-  const [remotePort, setRemotePort] = useState(22);
-  const [remoteUser, setRemoteUser] = useState("root");
-  const [remoteDir, setRemoteDir] = useState("/opt/app");
-  const [authMethod, setAuthMethod] = useState("ssh_key");
-
-  // Detail / Edit Modal
+  // Detail / Logs Modal
   const [selectedSchedule, setSelectedSchedule] = useState<ScheduleRecord | null>(null);
   const [detailTab, setDetailTab] = useState<"edit" | "logs">("edit");
   const [editName, setEditName] = useState("");
   const [editTimeStr, setEditTimeStr] = useState("");
-  const [editAgent, setEditAgent] = useState("");
+  const [editModel, setEditModel] = useState("");
 
-  // Persisted Execution Logs & Server Context
+  // Persisted Execution Logs
   const [executionLogs, setExecutionLogs] = useState<Record<string, ScheduleLogRecord[]>>(() => {
     try {
       const saved = localStorage.getItem("agentflow_schedule_logs_v1");
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  const [envConfigs, setEnvConfigs] = useState<Record<string, ScheduleEnvConfig>>(() => {
-    try {
-      const saved = localStorage.getItem(SCHEDULE_ENV_STORAGE_KEY);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -107,25 +92,13 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
     void loadSchedules();
   }, [loadSchedules]);
 
-  // Compute Human-readable Schedule Summary directly from Time Widget
-  const computeScheduleHumanSummary = () => {
-    if (frequency === "daily") {
-      return `每天 ${timePickerValue}`;
-    }
-    if (frequency === "workdays") {
-      return `工作日 (周一至周五) ${timePickerValue}`;
-    }
-    if (frequency === "weekly") {
-      const dayNames: Record<string, string> = {
-        "1": "周一",
-        "2": "周二",
-        "3": "周三",
-        "4": "周四",
-        "5": "周五",
-        "6": "周六",
-        "0": "周日",
-      };
-      return `每周${dayNames[weekdayValue] || "周一"} ${timePickerValue}`;
+  const getEffectiveTimeString = () => {
+    if (!isCustomTime) return presetTimeTag;
+    if (customFrequency === "daily") return `每天 ${customTimeVal}`;
+    if (customFrequency === "workdays") return `工作日 ${customTimeVal}`;
+    if (customFrequency === "weekly") {
+      const dayNames: Record<string, string> = { "1": "周一", "2": "周二", "3": "周三", "4": "周四", "5": "周五", "6": "周六", "0": "周日" };
+      return `每周${dayNames[customWeekday] || "周一"} ${customTimeVal}`;
     }
     return "每小时整点";
   };
@@ -164,16 +137,10 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
     setMessage(null);
     try {
       const isSimulatedFail = sched.name.includes("压力测试");
-      const env = envConfigs[sched.id];
-      const envSummary =
-        env?.envType === "remote"
-          ? `[远端服务器: ${env.remoteHost}:${env.remotePort} · 路径: ${env.remoteDir}]`
-          : "[本机独立沙箱工作区]";
-
       const run = await createMockTask({
         title: `[定时触发] ${sched.name}`,
-        description: `频次：${sched.cron} · 执行 Agent：${sched.targetWorkflowName}\n环境：${envSummary}`,
-        acceptanceCriteria: ["指定 Agent 定时派发执行", "目标环境操作验证完成"],
+        description: `频次：${sched.cron} · 模型：${sched.targetWorkflowName}\n环境：[本机工作区自动感知]`,
+        acceptanceCriteria: ["指定模型按时序触发执行", "环境健康检查与回归通过"],
         outcome: isSimulatedFail ? "failed" : "succeeded",
       });
 
@@ -182,13 +149,11 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
         triggeredAt: new Date().toLocaleTimeString("zh-CN"),
         runId: run.runId,
         status: isSimulatedFail ? "failed" : "succeeded",
-        durationSeconds: 1.2,
+        durationSeconds: 1.1,
         outputSummary: isSimulatedFail
-          ? "执行中断：Runner 子进程在执行步骤回归校验时超时。"
-          : `执行成功：${sched.targetWorkflowName} 已在 ${envSummary} 按预设结构化上下文完成闭环。`,
-        errorMessage: isSimulatedFail
-          ? "TimeoutException: Node execution exceeded deadline (60000ms)."
-          : undefined,
+          ? "执行中断：Runner 子进程在回归校验时超时。"
+          : `执行成功：${sched.targetWorkflowName} 已在本地工作区完成执行闭环。`,
+        errorMessage: isSimulatedFail ? "TimeoutException: Process exceeded limit." : undefined,
       };
 
       const existing = executionLogs[sched.id] || [];
@@ -213,34 +178,22 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
     }
   };
 
-  const handleAddSchedule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!taskDescription.trim()) return;
+  const handleCreateSchedule = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!title.trim()) return;
+
     setBusy(true);
     try {
-      const timeStr = computeScheduleHumanSummary();
+      const timeStr = getEffectiveTimeString();
       const schedId = `sched-${Date.now()}`;
-
-      // Save environment configuration to localStorage
-      const newEnvConfig: ScheduleEnvConfig = {
-        envType: targetEnvType,
-        remoteHost: targetEnvType === "remote" ? remoteHost.trim() : undefined,
-        remotePort: targetEnvType === "remote" ? remotePort : undefined,
-        remoteUser: targetEnvType === "remote" ? remoteUser.trim() : undefined,
-        remoteDir: targetEnvType === "remote" ? remoteDir.trim() : undefined,
-        authMethod: targetEnvType === "remote" ? authMethod : undefined,
-      };
-
-      const updatedEnvs = { ...envConfigs, [schedId]: newEnvConfig };
-      setEnvConfigs(updatedEnvs);
-      localStorage.setItem(SCHEDULE_ENV_STORAGE_KEY, JSON.stringify(updatedEnvs));
+      const finalModelLabel = `${selectedModel} (${selectedReasoning})`;
 
       const newItem: ScheduleRecord = {
         id: schedId,
-        name: taskDescription.trim(),
+        name: title.trim(),
         cron: timeStr,
         timezone: "Asia/Shanghai (本机)",
-        targetWorkflowName: assignedAgent,
+        targetWorkflowName: finalModelLabel,
         active: true,
         overlapPolicy: "skip",
         lastRunAt: null,
@@ -249,11 +202,18 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
 
       await saveSchedule(newItem);
       await loadSchedules();
+
+      // Reset modal state
       setShowAddModal(false);
-      setTaskDescription("");
-      setMessage(`定时任务【${newItem.name}】已成功创建并分配至 ${assignedAgent}。`);
+      setTitle("");
+      setDescription("");
+      setSubtasks([]);
+      setShowSubtasks(false);
+      setShowAttachment(false);
+      setAttachmentPath("");
+      setMessage(`定时任务【${newItem.name}】已成功创建！`);
     } catch (err) {
-      setMessage(`保存失败: ${String(err)}`);
+      setMessage(`创建失败: ${String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -263,7 +223,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
     setSelectedSchedule(sched);
     setEditName(sched.name);
     setEditTimeStr(sched.cron);
-    setEditAgent(sched.targetWorkflowName);
+    setEditModel(sched.targetWorkflowName);
     setDetailTab("edit");
   };
 
@@ -276,7 +236,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
         ...selectedSchedule,
         name: editName.trim(),
         cron: editTimeStr.trim(),
-        targetWorkflowName: editAgent.trim(),
+        targetWorkflowName: editModel.trim(),
       };
       await saveSchedule(updated);
       await loadSchedules();
@@ -296,7 +256,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
         <div>
           <h1>定时任务</h1>
           <p className="page-subtitle">
-            配置自动化定时规则。使用时间小组件点选时间，分配具体 Agent 节点执行，支持注入目标服务器与环境上下文。
+            配置周期性自动化规则。指定模型与推理深度，自动感知运行环境，纯净极简。
           </p>
         </div>
         <button
@@ -304,7 +264,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
           type="button"
           onClick={() => setShowAddModal(true)}
         >
-          + 新建定时规则
+          + 新建定时任务
         </button>
       </div>
 
@@ -314,23 +274,23 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
         </div>
       )}
 
-      {/* Streamlined Clean Schedules Table: Essential Info Only */}
+      {/* Streamlined Schedules Table */}
       <div className="apple-table-card">
         <table className="apple-tasks-table">
           <thead>
             <tr>
-              <th style={{ width: "20%" }}>触发时间</th>
-              <th style={{ width: "34%" }}>任务内容 & 目标环境</th>
-              <th style={{ width: "24%" }}>执行 Agent 节点</th>
+              <th style={{ width: "22%" }}>时间频次</th>
+              <th style={{ width: "34%" }}>任务内容</th>
+              <th style={{ width: "24%" }}>负责模型 & 推理程度</th>
               <th style={{ width: "10%" }}>状态</th>
-              <th style={{ width: "12%", textAlign: "right" }}>操作</th>
+              <th style={{ width: "10%", textAlign: "right" }}>操作</th>
             </tr>
           </thead>
           <tbody>
             {schedules.length === 0 ? (
               <tr>
                 <td colSpan={5} className="apple-table-empty">
-                  暂无定时任务。点击右上角“+ 新建定时规则”添加。
+                  暂无定时任务。点击右上角“+ 新建定时任务”开始。
                 </td>
               </tr>
             ) : (
@@ -338,7 +298,6 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                 const logs = executionLogs[s.id] || [];
                 const latestLog = logs[0];
                 const hasError = latestLog?.status === "failed";
-                const env = envConfigs[s.id];
 
                 return (
                   <tr
@@ -351,18 +310,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                     </td>
 
                     <td className="col-name">
-                      <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                        <strong>{s.name}</strong>
-                        {env?.envType === "remote" && env.remoteHost ? (
-                          <span className="env-tag remote" title={`主机: ${env.remoteHost} 目录: ${env.remoteDir}`}>
-                            ☁️ 远程主机：{env.remoteHost}
-                          </span>
-                        ) : (
-                          <span className="env-tag local">
-                            💻 本机隔离工作区
-                          </span>
-                        )}
-                      </div>
+                      <strong>{s.name}</strong>
                     </td>
 
                     <td className="col-desc">
@@ -420,55 +368,137 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
         </table>
       </div>
 
-      {/* Modal: Add Schedule with Time Widget & Agent Selection & Server Context */}
+      {/* Modal: Feishu-style Clean Add Task Modal (参考用户截图) */}
       {showAddModal && (
         <div className="apple-modal-backdrop" onClick={() => setShowAddModal(false)}>
           <div
-            className="apple-modal-card"
-            style={{ width: "540px", maxHeight: "90vh", overflowY: "auto" }}
+            className="feishu-modal-card"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3>新建定时规则</h3>
-            <p style={{ fontSize: "12px", color: "#86868b", marginTop: "2px" }}>
-              使用时间小组件手动点选时间，分配具体 Agent 节点执行，并配置服务器环境上下文。
-            </p>
+            {/* Top: Title Input + Close Icon */}
+            <div className="feishu-modal-top">
+              <input
+                className="feishu-title-input"
+                placeholder="输入标题，回车确认"
+                autoFocus
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleCreateSchedule();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="apple-icon-btn"
+                onClick={() => setShowAddModal(false)}
+                title="关闭"
+              >
+                ✕
+              </button>
+            </div>
 
-            <form onSubmit={handleAddSchedule} className="modal-body-form" style={{ marginTop: "14px" }}>
-              {/* 1. Time Widget (时间小组件) */}
-              <div className="time-widget-box">
-                <span className="field-subhead">1. 触发时间点 (时间小组件手动选择)</span>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <label>
-                    执行频次
+            {/* Row 1: Assignee (谁负责: 模型 + 推理程度) */}
+            <div className="feishu-field-row">
+              <span className="feishu-field-icon">👤</span>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", flex: 1 }}>
+                <select
+                  className="feishu-select"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                >
+                  {modelOptions.map((m) => (
+                    <option key={m.id} value={m.label}>
+                      {m.label} ({m.desc})
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className="feishu-select"
+                  value={selectedReasoning}
+                  onChange={(e) => setSelectedReasoning(e.target.value)}
+                >
+                  {reasoningOptions.map((r) => (
+                    <option key={r.id} value={r.label}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Row 2: Date & Repeat (什么时间，是否重复) */}
+            <div className="feishu-field-row" style={{ alignItems: "flex-start" }}>
+              <span className="feishu-field-icon" style={{ marginTop: "4px" }}>📅</span>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div className="feishu-pills-row">
+                  {[
+                    "每天 02:00",
+                    "工作日 09:30",
+                    "每周一 10:00",
+                    "每小时整点",
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      className={`feishu-pill-btn ${presetTimeTag === preset && !isCustomTime ? "active" : ""}`}
+                      onClick={() => {
+                        setPresetTimeTag(preset);
+                        setIsCustomTime(false);
+                      }}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    className={`feishu-pill-btn ${isCustomTime ? "active" : ""}`}
+                    onClick={() => setIsCustomTime(true)}
+                  >
+                    其他时间
+                  </button>
+
+                  <label className="feishu-repeat-label">
+                    <input
+                      type="checkbox"
+                      checked={isRepeating}
+                      onChange={(e) => setIsRepeating(e.target.checked)}
+                    />
+                    <span>重复执行</span>
+                  </label>
+                </div>
+
+                {isCustomTime && (
+                  <div className="feishu-custom-time-box">
                     <select
-                      value={frequency}
-                      onChange={(e) => setFrequency(e.target.value as typeof frequency)}
+                      className="feishu-select"
+                      value={customFrequency}
+                      onChange={(e) => setCustomFrequency(e.target.value as typeof customFrequency)}
                     >
                       <option value="daily">每天</option>
                       <option value="workdays">工作日 (周一至周五)</option>
                       <option value="weekly">每周</option>
-                      <option value="hourly">每小时整点</option>
+                      <option value="hourly">每小时</option>
                     </select>
-                  </label>
 
-                  {frequency !== "hourly" && (
-                    <label>
-                      执行时间点 (小时 : 分钟)
+                    {customFrequency !== "hourly" && (
                       <input
                         type="time"
-                        required
-                        value={timePickerValue}
-                        onChange={(e) => setTimePickerValue(e.target.value)}
+                        className="feishu-input"
+                        value={customTimeVal}
+                        onChange={(e) => setCustomTimeVal(e.target.value)}
                       />
-                    </label>
-                  )}
+                    )}
 
-                  {frequency === "weekly" && (
-                    <label>
-                      每周几
+                    {customFrequency === "weekly" && (
                       <select
-                        value={weekdayValue}
-                        onChange={(e) => setWeekdayValue(e.target.value)}
+                        className="feishu-select"
+                        value={customWeekday}
+                        onChange={(e) => setCustomWeekday(e.target.value)}
                       >
                         <option value="1">周一</option>
                         <option value="2">周二</option>
@@ -478,158 +508,138 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                         <option value="6">周六</option>
                         <option value="0">周日</option>
                       </select>
-                    </label>
-                  )}
-                </div>
-
-                <div className="spec-preview-bar">
-                  <span>设定预览：</span>
-                  <strong style={{ color: "#0071e3" }}>{computeScheduleHumanSummary()}</strong>
-                </div>
-              </div>
-
-              {/* 2. Task Description & Agent Assignment */}
-              <div style={{ marginTop: "6px" }}>
-                <label>
-                  任务执行描述
-                  <input
-                    required
-                    placeholder="例如：拉取最新主干分支，执行全量单元测试与回归套件"
-                    value={taskDescription}
-                    onChange={(e) => setTaskDescription(e.target.value)}
-                  />
-                </label>
-              </div>
-
-              <div>
-                <label>
-                  分配执行 Agent 节点
-                  <select
-                    value={assignedAgent}
-                    onChange={(e) => setAssignedAgent(e.target.value)}
-                  >
-                    {agentNodeOptions.map((opt) => (
-                      <option key={opt.id} value={opt.label}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              {/* 3. Server & Execution Environment Context (解决服务器信息与自然语言跑偏的担忧) */}
-              <div className="env-context-box">
-                <span className="field-subhead">2. 执行目标环境与服务器配置</span>
-                <div style={{ display: "flex", gap: "16px", marginBottom: "8px" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
-                    <input
-                      type="radio"
-                      name="envType"
-                      checked={targetEnvType === "local"}
-                      onChange={() => setTargetEnvType("local")}
-                    />
-                    <span>💻 本机隔离工作区</span>
-                  </label>
-
-                  <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
-                    <input
-                      type="radio"
-                      name="envType"
-                      checked={targetEnvType === "remote"}
-                      onChange={() => setTargetEnvType("remote")}
-                    />
-                    <span>☁️ 远程 Linux 服务器 (SSH)</span>
-                  </label>
-                </div>
-
-                {targetEnvType === "remote" ? (
-                  <div className="remote-env-fields">
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 100px", gap: "8px" }}>
-                      <label>
-                        服务器主机/IP
-                        <input
-                          required
-                          placeholder="例如：192.168.1.100 或 prod-server"
-                          value={remoteHost}
-                          onChange={(e) => setRemoteHost(e.target.value)}
-                        />
-                      </label>
-                      <label>
-                        端口
-                        <input
-                          type="number"
-                          value={remotePort}
-                          onChange={(e) => setRemotePort(Number(e.target.value))}
-                        />
-                      </label>
-                      <label>
-                        登录用户
-                        <input
-                          value={remoteUser}
-                          onChange={(e) => setRemoteUser(e.target.value)}
-                        />
-                      </label>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "6px" }}>
-                      <label>
-                        远程执行工作目录
-                        <input
-                          value={remoteDir}
-                          onChange={(e) => setRemoteDir(e.target.value)}
-                          placeholder="/opt/app 或 /var/log"
-                        />
-                      </label>
-                      <label>
-                        SSH 认证方式
-                        <select
-                          value={authMethod}
-                          onChange={(e) => setAuthMethod(e.target.value)}
-                        >
-                          <option value="ssh_key">本机 SSH Key 免密 (推荐)</option>
-                          <option value="ssh_agent">SSH_AUTH_SOCK 凭据代理</option>
-                        </select>
-                      </label>
-                    </div>
-
-                    <p className="env-assurance-note">
-                      🔒 <strong>执行确定性保障</strong>：系统在唤醒 Agent 时会将服务器主机 IP、工作路径与免密凭证作为结构化不可变契约注入给 Agent。Agent 会通过真实 SSH 通道探查并执行指令，杜绝由自然语言模糊导致的空想或跑偏。
-                    </p>
+                    )}
                   </div>
-                ) : (
-                  <p style={{ fontSize: "11px", color: "#86868b", marginTop: "4px" }}>
-                    默认在当前工作区运行，由本地独立 Runner 驱动，自动在独立 Git Worktree 隔离分支中执行，不干扰主干代码。
-                  </p>
                 )}
               </div>
+            </div>
 
-              <div className="modal-btn-row" style={{ marginTop: "14px" }}>
+            {/* Row 3: List / Scope (添加至任务清单) */}
+            <div className="feishu-field-row">
+              <span className="feishu-field-icon">📄</span>
+              <span style={{ fontSize: "13px", color: "#1d1d1f" }}>
+                默认工程工作区 (系统自动感知当前代码库与本地环境)
+              </span>
+            </div>
+
+            {/* Row 4: Description (添加描述) */}
+            <div className="feishu-field-row" style={{ alignItems: "flex-start" }}>
+              <span className="feishu-field-icon" style={{ marginTop: "4px" }}>≡</span>
+              <textarea
+                className="feishu-desc-input"
+                placeholder="添加任务描述、执行要求或巡检标准…"
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+
+            {/* Optional Subtasks Section */}
+            {showSubtasks && (
+              <div className="feishu-subtask-section">
+                <div style={{ fontSize: "12px", fontWeight: 600, color: "#86868b", marginBottom: "6px" }}>
+                  子任务清单：
+                </div>
+                {subtasks.map((st, idx) => (
+                  <div key={idx} style={{ display: "flex", gap: "6px", marginBottom: "4px" }}>
+                    <input
+                      className="feishu-input"
+                      placeholder={`子任务 ${idx + 1}`}
+                      value={st}
+                      onChange={(e) => {
+                        const updated = [...subtasks];
+                        updated[idx] = e.target.value;
+                        setSubtasks(updated);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="apple-icon-btn"
+                      onClick={() => setSubtasks(subtasks.filter((_, i) => i !== idx))}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
                 <button
-                  className="apple-btn-secondary"
                   type="button"
+                  className="apple-btn-secondary"
+                  style={{ fontSize: "11px", marginTop: "4px" }}
+                  onClick={() => setSubtasks([...subtasks, ""])}
+                >
+                  + 添加子任务项
+                </button>
+              </div>
+            )}
+
+            {/* Optional Attachment / Path Section */}
+            {showAttachment && (
+              <div className="feishu-subtask-section">
+                <div style={{ fontSize: "12px", fontWeight: 600, color: "#86868b", marginBottom: "6px" }}>
+                  关联项目路径 / 脚本附件：
+                </div>
+                <input
+                  className="feishu-input"
+                  placeholder="例如：/scripts/run_regression.sh 或当前工作区子目录"
+                  value={attachmentPath}
+                  onChange={(e) => setAttachmentPath(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Bottom Bar: Action Icons on Left, Cancel & Create on Right */}
+            <div className="feishu-modal-footer">
+              <div className="feishu-footer-left">
+                <button
+                  type="button"
+                  className={`feishu-tool-btn ${showSubtasks ? "active" : ""}`}
+                  title="添加子任务"
+                  onClick={() => {
+                    setShowSubtasks(!showSubtasks);
+                    if (!showSubtasks && subtasks.length === 0) setSubtasks([""]);
+                  }}
+                >
+                  ⑂ 子任务
+                </button>
+
+                <button
+                  type="button"
+                  className={`feishu-tool-btn ${showAttachment ? "active" : ""}`}
+                  title="添加附件或路径"
+                  onClick={() => setShowAttachment(!showAttachment)}
+                >
+                  📎 附件/路径
+                </button>
+              </div>
+
+              <div className="feishu-footer-right">
+                <button
+                  type="button"
+                  className="apple-btn-secondary"
                   onClick={() => setShowAddModal(false)}
                 >
                   取消
                 </button>
                 <button
+                  type="button"
                   className="apple-btn-primary"
-                  type="submit"
-                  disabled={busy}
+                  disabled={busy || !title.trim()}
+                  onClick={() => void handleCreateSchedule()}
                 >
-                  {busy ? "保存中…" : "保存并启用规则"}
+                  {busy ? "创建中…" : "创建"}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Schedule Detail & Edit & Logs */}
+      {/* Modal: Schedule Detail & Logs */}
       {selectedSchedule && (
         <div className="apple-modal-backdrop" onClick={() => setSelectedSchedule(null)}>
           <div
             className="apple-modal-card"
-            style={{ width: "600px" }}
+            style={{ width: "580px" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -640,7 +650,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                   className={detailTab === "edit" ? "active" : ""}
                   onClick={() => setDetailTab("edit")}
                 >
-                  编辑规则
+                  编辑任务
                 </button>
                 <button
                   type="button"
@@ -655,7 +665,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
             {detailTab === "edit" ? (
               <form onSubmit={handleSaveEdit} className="modal-body-form" style={{ marginTop: "12px" }}>
                 <label>
-                  任务描述内容
+                  任务内容标题
                   <input
                     required
                     value={editName}
@@ -664,7 +674,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                 </label>
 
                 <label>
-                  执行时间点
+                  触发时间
                   <input
                     required
                     value={editTimeStr}
@@ -673,29 +683,13 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                 </label>
 
                 <label>
-                  分配执行 Agent 节点
-                  <select
-                    value={editAgent}
-                    onChange={(e) => setEditAgent(e.target.value)}
-                  >
-                    {agentNodeOptions.map((opt) => (
-                      <option key={opt.id} value={opt.label}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                  负责模型与推理强度
+                  <input
+                    required
+                    value={editModel}
+                    onChange={(e) => setEditModel(e.target.value)}
+                  />
                 </label>
-
-                {envConfigs[selectedSchedule.id] && (
-                  <div style={{ padding: "8px 12px", background: "#f5f5f7", borderRadius: "8px", fontSize: "11px", color: "#86868b" }}>
-                    <strong>绑定的目标环境：</strong>
-                    {envConfigs[selectedSchedule.id].envType === "remote" ? (
-                      <span>远程主机 {envConfigs[selectedSchedule.id].remoteHost} ({envConfigs[selectedSchedule.id].remoteDir})</span>
-                    ) : (
-                      <span>本机隔离工作区</span>
-                    )}
-                  </div>
-                )}
 
                 <div className="modal-btn-row">
                   <button
@@ -718,7 +712,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
               <div className="schedule-logs-container" style={{ marginTop: "12px" }}>
                 {(!executionLogs[selectedSchedule.id] || executionLogs[selectedSchedule.id].length === 0) ? (
                   <p style={{ color: "#86868b", padding: "20px", textAlign: "center" }}>
-                    尚未触发过执行。点击任务行“触发”即可验证执行凭证。
+                    尚未触发过执行。点击任务行“触发”即可立即验证。
                   </p>
                 ) : (
                   executionLogs[selectedSchedule.id].map((log, idx) => (
