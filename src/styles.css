@@ -58,6 +58,32 @@ button, input, select, textarea {
   font-size: 13px;
 }
 
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23787774' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+  padding: 6px 30px 6px 10px;
+  border: 1px solid var(--apple-border);
+  border-radius: 6px;
+  color: var(--apple-text-primary);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+select:hover {
+  border-color: #b0b0b8;
+}
+
+select:focus {
+  border-color: #111111;
+  box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.06);
+}
+
 /* App Shell - Fixed Sidebar Layout */
 .shell {
   display: flex;
@@ -510,11 +536,133 @@ h1 {
   color: var(--apple-text-secondary);
 }
 
-.mindmap-canvas-wrapper {
+.mindmap-canvas-section {
+  background: #ffffff;
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.canvas-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--apple-border);
+  background: var(--apple-card-subtle);
+}
+
+.canvas-title-wrap .section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--apple-text-primary);
+  display: block;
+}
+
+.canvas-title-wrap .section-sub {
+  font-size: 11px;
+  color: var(--apple-text-secondary);
+}
+
+.mindmap-canvas-wrapper,
+.mindmap-reactflow-wrapper {
   width: 100%;
   height: 380px;
   background-color: #ffffff;
   position: relative;
+}
+
+/* React Flow Mind Map Nodes */
+.mindmap-node-card {
+  box-sizing: border-box;
+  user-select: none;
+  cursor: grab;
+}
+
+.mindmap-node-card:active {
+  cursor: grabbing;
+}
+
+.mindmap-node-card:hover {
+  border-color: #b0b0b8 !important;
+}
+
+.mindmap-node-card.selected {
+  border-color: #111111 !important;
+}
+
+.mindmap-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: -0.01em;
+}
+
+.mindmap-status-pill.running {
+  background: #eef5fb;
+  color: #195f91;
+  border: 1px solid #d4e7f7;
+}
+
+.mindmap-status-pill.succeeded {
+  background: #f0f7f1;
+  color: #2d6b38;
+  border: 1px solid #d4ebdc;
+}
+
+.mindmap-status-pill.failed {
+  background: #fdf1f1;
+  color: #a62828;
+  border: 1px solid #f9d5d5;
+}
+
+.mindmap-status-pill.waiting {
+  background: #fdf8eb;
+  color: #87570e;
+  border: 1px solid #f6e6be;
+}
+
+.mindmap-status-pill.pending {
+  background: #f5f5f7;
+  color: #787774;
+  border: 1px solid #e5e5ea;
+}
+
+.status-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #195f91;
+  display: inline-block;
+  animation: mindmap-pulse 1.8s infinite ease-in-out;
+}
+
+@keyframes mindmap-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(25, 95, 145, 0.4);
+  }
+  70% {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 4px rgba(25, 95, 145, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(25, 95, 145, 0);
+  }
+}
+
+.status-waiting-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #87570e;
+  display: inline-block;
 }
 
 /* ==============================================
@@ -1893,17 +2041,37 @@ h1 {
 .modal-body-form textarea,
 .modal-body-form select {
   border: 1px solid var(--apple-border);
-  border-radius: 8px;
-  padding: 9px 12px;
+  border-radius: 6px;
+  padding: 8px 12px;
   background: #ffffff;
   color: var(--apple-text-primary);
+  font-size: 13px;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.modal-body-form select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23787774' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+  padding-right: 32px !important;
+  cursor: pointer;
+}
+
+.modal-body-form input:hover,
+.modal-body-form textarea:hover,
+.modal-body-form select:hover {
+  border-color: #b0b0b8;
 }
 
 .modal-body-form input:focus,
 .modal-body-form textarea:focus,
 .modal-body-form select:focus {
-  border-color: var(--apple-blue);
+  border-color: #111111;
+  box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.06);
 }
 
 .modal-btn-row {
@@ -2030,12 +2198,74 @@ h1 {
 }
 
 /* Streamlined Schedules View Badges */
-.cron-pill {
-  font-size: 11px;
-  font-family: monospace;
-  background: #f0f0f4;
+.schedule-time-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: var(--apple-text-primary);
-  padding: 3px 7px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.schedule-clock-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #f4f4f6;
+  border: 1px solid #ebebec;
+  color: #636366;
+  flex-shrink: 0;
+}
+
+.schedule-time-label {
+  color: #111111;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.schedule-name-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111111;
+  letter-spacing: -0.01em;
+}
+
+.schedule-agent-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #636366;
+  font-size: 12px;
+  background: #fafaf9;
+  border: 1px solid #eaeaea;
+  padding: 2px 8px;
+  border-radius: 5px;
+  width: fit-content;
+}
+
+.schedule-agent-icon {
+  color: #787774;
+  flex-shrink: 0;
+}
+
+.schedule-agent-label {
+  font-weight: 500;
+  color: #374151;
+}
+
+/* Backward-compatible fallback */
+.cron-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  background: #f4f4f6;
+  color: #111111;
+  padding: 3px 8px;
   border-radius: 5px;
 }
 
@@ -2252,13 +2482,31 @@ h1 {
 }
 
 .feishu-select {
-  padding: 5px 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 6px 28px 6px 10px;
   border-radius: 6px;
   border: 1px solid var(--apple-border);
-  background: #ffffff;
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23787774' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px 12px;
   font-size: 12px;
-  color: #1d1d1f;
+  font-weight: 500;
+  color: #111111;
   outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.feishu-select:hover {
+  border-color: #b0b0b8;
+}
+
+.feishu-select:focus {
+  border-color: #111111;
+  box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.06);
 }
 
 .feishu-input {

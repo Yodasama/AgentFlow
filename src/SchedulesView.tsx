@@ -16,6 +16,7 @@ import {
   IconAlertTriangle,
   IconLink,
   IconTasks,
+  IconCpu,
 } from "./icons";
 
 interface Props {
@@ -45,6 +46,48 @@ const reasoningOptions = [
   { id: "medium", label: "平衡 (Medium)" },
   { id: "high", label: "深度 (High)" },
 ];
+
+export function formatScheduleDisplay(raw: string): string {
+  if (!raw) return "按需触发";
+  const trimmed = raw.trim();
+
+  // 1. If it contains parenthesis description e.g. "0 2 * * * (每日 02:00)" or "(每 2 小时)"
+  const parenMatch = trimmed.match(/\(([^)]+)\)/);
+  if (parenMatch && parenMatch[1].trim()) {
+    return parenMatch[1].trim();
+  }
+
+  // 2. If it's already human-friendly e.g. "每天 02:00", "工作日 09:30", "每周一 10:00", "每小时整点"
+  if (
+    trimmed.startsWith("每天") ||
+    trimmed.startsWith("每日") ||
+    trimmed.startsWith("工作日") ||
+    trimmed.startsWith("每周") ||
+    trimmed.startsWith("每小时") ||
+    trimmed.startsWith("每 2 小时") ||
+    trimmed.startsWith("每") ||
+    trimmed.startsWith("单次")
+  ) {
+    return trimmed;
+  }
+
+  // 3. Known cron patterns mapping
+  if (trimmed === "0 2 * * *") return "每天 02:00";
+  if (trimmed === "0 */2 * * *" || trimmed === "*/120 * * * *") return "每 2 小时";
+  if (trimmed === "0 * * * *") return "每小时整点";
+  if (trimmed === "*/30 * * * *") return "每 30 分钟";
+  if (trimmed === "0 9 * * 1-5" || trimmed === "30 9 * * 1-5") return "工作日 09:30";
+  if (trimmed === "0 10 * * 1") return "每周一 10:00";
+
+  // 4. Strip leading 5-field cron if friendly text follows
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 6 && /^[\d*,/\\-]+$/.test(parts[0]) && /^[\d*,/\\-]+$/.test(parts[1])) {
+    const trailing = parts.slice(5).join(" ");
+    if (trailing.length > 0) return trailing;
+  }
+
+  return trimmed;
+}
 
 export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
   const [schedules, setSchedules] = useState<ScheduleRecord[]>([]);
@@ -232,7 +275,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
   const handleOpenDetail = (sched: ScheduleRecord) => {
     setSelectedSchedule(sched);
     setEditName(sched.name);
-    setEditTimeStr(sched.cron);
+    setEditTimeStr(formatScheduleDisplay(sched.cron));
     setEditModel(sched.targetWorkflowName);
     setDetailTab("edit");
   };
@@ -316,15 +359,23 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                     onClick={() => handleOpenDetail(s)}
                   >
                     <td className="col-time">
-                      <span className="cron-pill">⏰ {s.cron}</span>
+                      <div className="schedule-time-cell" title={s.cron !== formatScheduleDisplay(s.cron) ? s.cron : undefined}>
+                        <span className="schedule-clock-icon">
+                          <IconSchedule size={13} />
+                        </span>
+                        <span className="schedule-time-label">{formatScheduleDisplay(s.cron)}</span>
+                      </div>
                     </td>
 
                     <td className="col-name">
-                      <strong>{s.name}</strong>
+                      <strong className="schedule-name-text">{s.name}</strong>
                     </td>
 
                     <td className="col-desc">
-                      <span className="target-node-pill">{s.targetWorkflowName}</span>
+                      <div className="schedule-agent-cell">
+                        <IconCpu size={12} className="schedule-agent-icon" />
+                        <span className="schedule-agent-label">{s.targetWorkflowName}</span>
+                      </div>
                     </td>
 
                     <td className="col-status">
@@ -697,18 +748,23 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                 </label>
 
                 <label>
-                  触发时间
+                  触发时间频次
                   <input
                     required
+                    placeholder="例如：每天 02:00、工作日 09:30、每 2 小时"
                     value={editTimeStr}
                     onChange={(e) => setEditTimeStr(e.target.value)}
                   />
+                  <span style={{ fontSize: "11px", color: "var(--apple-text-tertiary)", marginTop: "2px" }}>
+                    支持自然时间（如：每天 02:00、工作日 09:30）或标准周期规则
+                  </span>
                 </label>
 
                 <label>
-                  负责模型与推理强度
+                  负责模型与推理程度
                   <input
                     required
+                    placeholder="例如：Claude 3.5 Sonnet (极高推理)"
                     value={editModel}
                     onChange={(e) => setEditModel(e.target.value)}
                   />

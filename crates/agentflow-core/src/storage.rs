@@ -2453,10 +2453,18 @@ fn migrate_transaction(connection: &mut Connection) -> Result<(), StorageError> 
         )?;
         tx.execute(
             "INSERT OR IGNORE INTO schedules(id, name, cron, timezone, target_workflow_name, active, overlap_policy, last_run_at, created_at)
-             VALUES ('sched-1', '每日全量代码架构与安全性巡检', '0 2 * * * (每日 02:00)', 'Asia/Shanghai (本机时区)', '标准开发闭环工作流', 1, 'skip', '2026-09-17 02:00:00', ?1),
-                    ('sched-2', '每两小时系统自检与 SQLite WAL 对账', '0 */2 * * * (每 2 小时)', 'Asia/Shanghai (本机时区)', '健康自检与资源锁验证', 1, 'skip', '2026-09-18 08:00:00', ?1)",
+             VALUES ('sched-1', '每日全量代码架构与安全性巡检', '每天 02:00', 'Asia/Shanghai (本机时区)', 'Claude 3.5 Sonnet (极高推理)', 1, 'skip', '2026-09-17 02:00:00', ?1),
+                    ('sched-2', '每两小时系统自检与 SQLite WAL 对账', '每 2 小时', 'Asia/Shanghai (本机时区)', 'GPT-4o (快速响应)', 1, 'skip', '2026-09-18 08:00:00', ?1)",
             [&now],
         )?;
+        let _ = tx.execute(
+            "UPDATE schedules SET cron = '每天 02:00', target_workflow_name = 'Claude 3.5 Sonnet (极高推理)' WHERE id = 'sched-1' AND cron LIKE '%0 2 * * *%'",
+            [],
+        );
+        let _ = tx.execute(
+            "UPDATE schedules SET cron = '每 2 小时', target_workflow_name = 'GPT-4o (快速响应)' WHERE id = 'sched-2' AND cron LIKE '%0 */2 * * *%'",
+            [],
+        );
         tx.execute(
             "INSERT OR IGNORE INTO goals(id, title, description, status, deadline, actions_used, actions_budget, created_at)
              VALUES ('goal-1', '构建端到端高可靠 Agent 本地开发闭环', '实现通过本地独立 runner 驱动 Agent 完成任务分析、代码修改、真实 Git Checkpoint 生成、自动化测试与 Review 返工。', 'in_progress', '2026-10-01', 14, 50, ?1),

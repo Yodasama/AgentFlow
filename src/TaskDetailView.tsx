@@ -63,53 +63,77 @@ interface MindMapNodeData {
   [key: string]: unknown;
 }
 
+function getRoleBadgeTheme(role: string) {
+  if (role.includes("开发") || role.includes("编写")) {
+    return { bg: "#eef5fb", text: "#195f91", border: "#d4e7f7" };
+  }
+  if (role.includes("审查") || role.includes("review") || role.includes("Review")) {
+    return { bg: "#fdf8eb", text: "#87570e", border: "#f6e6be" };
+  }
+  if (role.includes("测试") || role.includes("test")) {
+    return { bg: "#f0f7f1", text: "#2d6b38", border: "#d4ebdc" };
+  }
+  if (role.includes("架构") || role.includes("拆解")) {
+    return { bg: "#f5f3ff", text: "#4338ca", border: "#e0e7ff" };
+  }
+  if (role.includes("审批") || role.includes("决策")) {
+    return { bg: "#f4f4f5", text: "#3f3f46", border: "#e4e4e7" };
+  }
+  return { bg: "#f7f6f3", text: "#444444", border: "#eaeaea" };
+}
+
 // Apple Mind-Map Custom Node Component
 function MindMapNode({ data, selected }: NodeProps) {
   const nodeData = data as unknown as MindMapNodeData;
-  const statusColors = {
-    pending: { bg: "#f5f5f7", text: "#86868b", border: "#e5e5ea" },
-    running: { bg: "#e8f2ff", text: "#0071e3", border: "#0071e3" },
-    succeeded: { bg: "#eafaf1", text: "#24a159", border: "#24a159" },
-    failed: { bg: "#fdf0ed", text: "#e03e1a", border: "#e03e1a" },
-    waiting: { bg: "#fef6e7", text: "#d97706", border: "#d97706" },
-  };
-  const color = statusColors[nodeData.status] || statusColors.pending;
+  const roleTheme = getRoleBadgeTheme(nodeData.role || "");
 
   return (
     <div
+      className={`mindmap-node-card ${selected ? "selected" : ""}`}
       style={{
         background: "#ffffff",
-        border: `1.5px solid ${selected ? "#0071e3" : color.border}`,
-        borderRadius: "12px",
+        border: `1px solid ${selected ? "#111111" : "#eaeaea"}`,
+        borderRadius: "10px",
         padding: "12px 14px",
-        minWidth: "200px",
+        minWidth: "220px",
+        maxWidth: "280px",
         boxShadow: selected
-          ? "0 0 0 3px rgba(0, 113, 227, 0.15), 0 4px 14px rgba(0,0,0,0.06)"
-          : "0 2px 8px rgba(0,0,0,0.04)",
+          ? "0 0 0 2px rgba(17, 17, 17, 0.08), 0 6px 18px rgba(0, 0, 0, 0.05)"
+          : "0 1px 3px rgba(0, 0, 0, 0.02), 0 4px 12px rgba(0, 0, 0, 0.03)",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
+        transition: "border-color 0.15s ease, box-shadow 0.15s ease",
       }}
     >
       <Handle
         type="target"
         position={Position.Left}
-        style={{ background: "#86868b", width: 7, height: 7 }}
+        style={{
+          background: "#ffffff",
+          border: "2px solid #8e8e93",
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          boxShadow: "0 0 0 1px #ffffff",
+        }}
       />
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "6px",
+          marginBottom: "8px",
         }}
       >
         <span
           style={{
             fontSize: "11px",
-            fontWeight: 600,
-            color: color.text,
-            background: color.bg,
-            padding: "2px 6px",
-            borderRadius: "5px",
+            fontWeight: 500,
+            color: roleTheme.text,
+            background: roleTheme.bg,
+            border: `1px solid ${roleTheme.border}`,
+            padding: "2px 7px",
+            borderRadius: "4px",
+            letterSpacing: "-0.01em",
           }}
         >
           {nodeData.role}
@@ -117,13 +141,16 @@ function MindMapNode({ data, selected }: NodeProps) {
         <span
           style={{
             fontSize: "10px",
-            color: "#86868b",
-            background: "#f5f5f7",
-            padding: "2px 5px",
+            fontFamily: "var(--apple-font-mono, ui-monospace, monospace)",
+            color: "#787774",
+            background: "#fafaf9",
+            border: "1px solid #f0f0ee",
+            padding: "2px 6px",
             borderRadius: "4px",
+            letterSpacing: "0.01em",
           }}
         >
-          推理: {nodeData.reasoning}
+          {nodeData.reasoning}
         </span>
       </div>
 
@@ -131,8 +158,11 @@ function MindMapNode({ data, selected }: NodeProps) {
         style={{
           fontSize: "13px",
           fontWeight: 600,
-          color: "#1d1d1f",
-          marginBottom: "6px",
+          color: "#111111",
+          lineHeight: 1.45,
+          letterSpacing: "-0.01em",
+          marginBottom: "8px",
+          wordBreak: "break-word",
         }}
       >
         {nodeData.label}
@@ -144,31 +174,56 @@ function MindMapNode({ data, selected }: NodeProps) {
           justifyContent: "space-between",
           alignItems: "center",
           fontSize: "11px",
-          color: "#86868b",
+          color: "#787774",
           borderTop: "1px solid #f2f2f5",
-          paddingTop: "6px",
+          paddingTop: "7px",
         }}
       >
         <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-          <IconCpu size={11} />
-          <span>{nodeData.model}</span>
+          <IconCpu size={12} stroke="#787774" />
+          <span style={{ fontWeight: 500 }}>{nodeData.model}</span>
         </span>
-        <span style={{ fontSize: "10px", color: color.text }}>
-          {nodeData.status === "running"
-            ? "运行中"
-            : nodeData.status === "succeeded"
-            ? "已完成"
-            : nodeData.status === "failed"
-            ? "异常"
-            : nodeData.status === "waiting"
-            ? "待处理"
-            : "就绪"}
+        <span className={`mindmap-status-pill ${nodeData.status}`}>
+          {nodeData.status === "running" && (
+            <>
+              <span className="status-pulse-dot" />
+              <span>运行中</span>
+            </>
+          )}
+          {nodeData.status === "succeeded" && (
+            <>
+              <IconCheck size={10} stroke="#2d6b38" />
+              <span>已完成</span>
+            </>
+          )}
+          {nodeData.status === "failed" && (
+            <>
+              <IconAlertTriangle size={10} stroke="#a62828" />
+              <span>异常</span>
+            </>
+          )}
+          {nodeData.status === "waiting" && (
+            <>
+              <span className="status-waiting-dot" />
+              <span>待确认</span>
+            </>
+          )}
+          {nodeData.status === "pending" && (
+            <span>排队中</span>
+          )}
         </span>
       </div>
       <Handle
         type="source"
         position={Position.Right}
-        style={{ background: "#86868b", width: 7, height: 7 }}
+        style={{
+          background: "#ffffff",
+          border: "2px solid #8e8e93",
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          boxShadow: "0 0 0 1px #ffffff",
+        }}
       />
     </div>
   );
@@ -478,36 +533,36 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
             id: "e1-2",
             source: "node-1",
             target: "node-2",
-            style: { stroke: "#b0b0b8", strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#86868b" },
+            style: { stroke: "#c7c7cc", strokeWidth: 1.5 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#8e8e93" },
           },
           {
             id: "e2-3",
             source: "node-2",
             target: "node-3",
-            style: { stroke: "#b0b0b8", strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#86868b" },
+            style: { stroke: "#c7c7cc", strokeWidth: 1.5 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#8e8e93" },
           },
           {
             id: "e2-4",
             source: "node-2",
             target: "node-4",
-            style: { stroke: "#b0b0b8", strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#86868b" },
+            style: { stroke: "#c7c7cc", strokeWidth: 1.5 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#8e8e93" },
           },
           {
             id: "e3-5",
             source: "node-3",
             target: "node-5",
-            style: { stroke: "#b0b0b8", strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#86868b" },
+            style: { stroke: "#c7c7cc", strokeWidth: 1.5 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#8e8e93" },
           },
           {
             id: "e4-5",
             source: "node-4",
             target: "node-5",
-            style: { stroke: "#b0b0b8", strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#86868b" },
+            style: { stroke: "#c7c7cc", strokeWidth: 1.5 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#8e8e93" },
           },
         ]
       : [];
@@ -519,10 +574,14 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
   const handleAddNode = () => {
     if (!newNodeLabel.trim()) return;
     const newId = `custom-node-${Date.now()}`;
+    const lastNode = nodes.length > 0 ? nodes[nodes.length - 1] : null;
+    const newX = lastNode ? lastNode.position.x + 280 : 300;
+    const newY = lastNode ? lastNode.position.y : 120;
+
     const newNode: Node = {
       id: newId,
       type: "mindMapNode",
-      position: { x: 300 + Math.random() * 200, y: 60 + Math.random() * 150 },
+      position: { x: newX, y: newY },
       data: {
         label: newNodeLabel.trim(),
         role: newNodeRole,
@@ -532,6 +591,18 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
       },
     };
     setNodes((prev) => [...prev, newNode]);
+
+    if (lastNode) {
+      const newEdge: Edge = {
+        id: `e-${lastNode.id}-${newId}`,
+        source: lastNode.id,
+        target: newId,
+        style: { stroke: "#c7c7cc", strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#8e8e93" },
+      };
+      setEdges((prev) => [...prev, newEdge]);
+    }
+
     setShowAddNodeModal(false);
     setNewNodeLabel("");
   };
@@ -1079,60 +1150,71 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
       {/* Modal: Add Node to Mind Map */}
       {showAddNodeModal && (
         <div className="apple-modal-backdrop" onClick={() => setShowAddNodeModal(false)}>
-          <div className="apple-modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3>向脑图添加功能节点</h3>
+          <div className="apple-modal-card" style={{ maxWidth: "480px" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: "16px" }}>
+              <h3 style={{ margin: "0 0 4px 0", fontSize: "16px", fontWeight: 600, color: "#111111" }}>
+                向执行流添加功能节点
+              </h3>
+              <p style={{ margin: 0, fontSize: "13px", color: "#787774" }}>
+                配置节点担任的角色职责、模型引擎与推理强度，编排入当前闭环。
+              </p>
+            </div>
+
             <div className="modal-body-form">
               <label>
-                功能担任 (Role)
+                <span>功能担任 (Role)</span>
                 <select
                   value={newNodeRole}
                   onChange={(e) => handleRoleSelectChange(e.target.value)}
                 >
                   {availableRoles.map((r) => (
                     <option key={r.id} value={r.roleName}>
-                      {r.icon} {r.roleName} ({r.description.slice(0, 16)}…)
+                      {r.roleName} — {r.description.slice(0, 24)}…
                     </option>
                   ))}
                 </select>
               </label>
 
               <label>
-                节点名称
+                <span>节点名称 / 执行目标</span>
                 <input
-                  placeholder="例如：优化 SQL 查询与连接池"
+                  placeholder="例如：优化 SQL 查询与连接池、编写端到端测试用例"
                   value={newNodeLabel}
                   onChange={(e) => setNewNodeLabel(e.target.value)}
+                  autoFocus
                 />
               </label>
 
-              <label>
-                模型名称
-                <select
-                  value={newNodeModel}
-                  onChange={(e) => setNewNodeModel(e.target.value)}
-                >
-                  <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet</option>
-                  <option value="GPT-4o">GPT-4o</option>
-                  <option value="DeepSeek-R1">DeepSeek-R1</option>
-                  <option value="本地仿真模型">本地仿真模型 (Mock Agent)</option>
-                </select>
-              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "12px" }}>
+                <label>
+                  <span>驱动模型</span>
+                  <select
+                    value={newNodeModel}
+                    onChange={(e) => setNewNodeModel(e.target.value)}
+                  >
+                    <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet</option>
+                    <option value="GPT-4o">GPT-4o</option>
+                    <option value="DeepSeek-R1">DeepSeek-R1</option>
+                    <option value="本地仿真模型">本地仿真模型 (Mock Agent)</option>
+                  </select>
+                </label>
 
-              <label>
-                推理程度
-                <select
-                  value={newNodeReasoning}
-                  onChange={(e) => setNewNodeReasoning(e.target.value)}
-                >
-                  <option value="极高 (High Thinking)">极高 (High Thinking)</option>
-                  <option value="高 (Standard Deep)">高 (Standard Deep)</option>
-                  <option value="中等 (Medium)">中等 (Medium)</option>
-                  <option value="快速响应 (Low)">快速响应 (Low)</option>
-                </select>
-              </label>
+                <label>
+                  <span>推理程度</span>
+                  <select
+                    value={newNodeReasoning}
+                    onChange={(e) => setNewNodeReasoning(e.target.value)}
+                  >
+                    <option value="极高 (High Thinking)">极高 (High Thinking)</option>
+                    <option value="高 (Standard Deep)">高 (Standard Deep)</option>
+                    <option value="中等 (Medium)">中等 (Medium)</option>
+                    <option value="快速响应 (Low)">快速响应 (Low)</option>
+                  </select>
+                </label>
+              </div>
             </div>
 
-            <div className="modal-btn-row">
+            <div className="modal-btn-row" style={{ marginTop: "20px" }}>
               <button
                 className="apple-btn-secondary"
                 type="button"
@@ -1143,9 +1225,10 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
               <button
                 className="apple-btn-primary"
                 type="button"
+                disabled={!newNodeLabel.trim()}
                 onClick={handleAddNode}
               >
-                添加节点
+                确认添加节点
               </button>
             </div>
           </div>
