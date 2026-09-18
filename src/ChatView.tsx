@@ -868,19 +868,16 @@ export function ChatView({
     <div className="gpt-chat-root">
       {/* Left Collapsible History Sidebar */}
       <aside className={`chat-history-sidebar ${showHistory ? "" : "collapsed"}`}>
-        {/* Top Horizontal Bar: Sleek New Chat Button */}
-        <div className="history-top-bar">
+        {/* Top Action: New Chat (consistent with left navigation) */}
+        <div className="history-top-actions">
           <button
             type="button"
-            className="history-new-chat-bar-btn"
+            className="history-new-chat-btn"
             onClick={handleNewSession}
             title="开启新对话"
           >
-            <div className="history-new-chat-left">
-              <IconPlus size={13} stroke="#18181b" />
-              <span>新对话</span>
-            </div>
-            <span className="history-new-chat-badge">新建</span>
+            <IconPlus size={14} stroke="currentColor" />
+            <span>新对话</span>
           </button>
         </div>
 

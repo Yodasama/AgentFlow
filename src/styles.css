@@ -2650,12 +2650,12 @@ h1 {
   overflow: hidden;
 }
 
-/* Collapsible History Sidebar */
+/* Collapsible History Sidebar (Consistent with Left Sidebar) */
 .chat-history-sidebar {
-  width: 240px;
+  width: 220px;
   flex-shrink: 0;
-  background: #f7f7f6;
-  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--apple-bg);
+  border-right: 1px solid var(--apple-border);
   display: flex;
   flex-direction: column;
   transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
@@ -2670,73 +2670,55 @@ h1 {
   pointer-events: none;
 }
 
-/* History Sidebar Top Horizontal Bar (Sleek New Chat) */
-.history-top-bar {
-  height: 42px;
-  min-height: 42px;
-  box-sizing: border-box;
-  padding: 0 8px;
+/* History Sidebar Top Horizontal Action (Consistent with Nav Button) */
+.history-top-actions {
+  padding: 12px 10px 6px;
   display: flex;
   align-items: center;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-  background: #f7f7f6;
+  flex-shrink: 0;
 }
 
-.history-new-chat-bar-btn {
-  width: 100%;
-  height: 28px;
+.history-new-chat-btn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 9px;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-sm);
   background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 6px;
-  font-size: 12px;
+  color: var(--apple-text-primary);
+  font-size: 13px;
   font-weight: 500;
-  color: #18181b;
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.history-new-chat-bar-btn:hover {
-  background: #ffffff;
-  border-color: rgba(0, 0, 0, 0.18);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.04);
+.history-new-chat-btn:hover {
+  background: var(--apple-card);
+  border-color: #d1d1d6;
+  color: #111111;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
-.history-new-chat-bar-btn:active {
+.history-new-chat-btn:active {
   transform: scale(0.98);
-}
-
-.history-new-chat-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.history-new-chat-badge {
-  font-size: 10px;
-  color: #71717a;
-  background: #f4f4f5;
-  padding: 1px 5px;
-  border-radius: 4px;
 }
 
 /* History Group Sections */
 .history-group-section {
   display: flex;
   flex-direction: column;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .history-group-label {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
-  color: #a1a1a6;
-  padding: 6px 8px 3px 8px;
-  letter-spacing: 0.02em;
+  color: var(--apple-text-tertiary);
+  padding: 8px 8px 4px;
+  letter-spacing: 0.01em;
 }
 
 .history-group-items {
@@ -2748,10 +2730,9 @@ h1 {
 .history-sessions-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 8px;
+  padding: 4px 10px 14px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
 }
 
 .history-sessions-list::-webkit-scrollbar {
@@ -2768,11 +2749,11 @@ h1 {
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--apple-radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
   background: transparent;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
   text-align: left;
   width: 100%;
   box-sizing: border-box;
@@ -2784,10 +2765,10 @@ h1 {
 
 .history-session-item.active {
   background: #ffffff;
-  border-left: 2.5px solid #18181b;
-  border-color: rgba(0, 0, 0, 0.06);
-  border-left-color: #18181b;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  border-color: var(--apple-border);
+  color: #111111;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .history-session-info {
