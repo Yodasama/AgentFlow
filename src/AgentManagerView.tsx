@@ -10,6 +10,7 @@ import {
   IconBrain,
   IconCheck,
 } from "./icons";
+import { DrawerSelect } from "./DrawerSelect";
 
 export interface AgentRoleConfig {
   id: string;
@@ -306,46 +307,32 @@ export function AgentManagerView() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", margin: "14px 0" }}>
               <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "13px", color: "#1d1d1f", fontWeight: 500 }}>
                 推荐模型引擎 (画布添加节点时默认选用)
-                <select
+                <DrawerSelect
                   value={selected.defaultModel}
-                  onChange={(e) => updateSelectedRole({ defaultModel: e.target.value })}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #e5e5ea",
-                    background: "#ffffff",
-                    fontSize: "13px",
-                    color: "#1d1d1f",
-                  }}
-                >
-                  <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet (长上下文与架构)</option>
-                  <option value="GPT-4o">GPT-4o (逻辑与拆解)</option>
-                  <option value="DeepSeek-R1">DeepSeek-R1 (深度思维链)</option>
-                  <option value="自动化环境 (Test Runner)">自动化环境 (Test Runner)</option>
-                  <option value="人工确认 (Human In Loop)">人工确认 (Human In Loop)</option>
-                </select>
+                  onChange={(val) => updateSelectedRole({ defaultModel: val })}
+                  options={[
+                    { value: "Claude 3.5 Sonnet", label: "Claude 3.5 Sonnet", description: "长上下文与架构" },
+                    { value: "GPT-4o", label: "GPT-4o", description: "逻辑与拆解" },
+                    { value: "DeepSeek-R1", label: "DeepSeek-R1", description: "深度思维链" },
+                    { value: "自动化环境 (Test Runner)", label: "自动化环境 (Test Runner)", description: "单元测试与回归" },
+                    { value: "人工确认 (Human In Loop)", label: "人工确认 (Human In Loop)", description: "人工介入终审" },
+                  ]}
+                />
               </label>
 
               <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "13px", color: "#1d1d1f", fontWeight: 500 }}>
                 推荐推理深度
-                <select
+                <DrawerSelect
                   value={selected.defaultReasoning}
-                  onChange={(e) => updateSelectedRole({ defaultReasoning: e.target.value })}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #e5e5ea",
-                    background: "#ffffff",
-                    fontSize: "13px",
-                    color: "#1d1d1f",
-                  }}
-                >
-                  <option value="快速">快速 (Low · 1~2 步快速响应)</option>
-                  <option value="标准">标准 (Medium · 4~8 步平衡思考)</option>
-                  <option value="深度">深度 (High · 16~32 步多轮推演)</option>
-                  <option value="极致思维">极致思维 (Extreme · 全量思维链)</option>
-                  <option value="最高">最高 (Human · 人工严谨审核)</option>
-                </select>
+                  onChange={(val) => updateSelectedRole({ defaultReasoning: val })}
+                  options={[
+                    { value: "快速", label: "快速 (Low)", description: "1~2 步快速响应" },
+                    { value: "标准", label: "标准 (Medium)", description: "4~8 步平衡思考" },
+                    { value: "深度", label: "深度 (High)", description: "16~32 步多轮推演" },
+                    { value: "极致思维", label: "极致思维 (Extreme)", description: "全量深度思维链" },
+                    { value: "最高", label: "最高 (Human)", description: "人工严谨审核" },
+                  ]}
+                />
               </label>
             </div>
 
@@ -432,28 +419,30 @@ export function AgentManagerView() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                 <label>
                   推荐模型引擎
-                  <select
+                  <DrawerSelect
                     value={newModel}
-                    onChange={(e) => setNewModel(e.target.value)}
-                  >
-                    <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet</option>
-                    <option value="GPT-4o">GPT-4o</option>
-                    <option value="DeepSeek-R1">DeepSeek-R1</option>
-                    <option value="自动化环境 (Test Runner)">自动化环境 (Test Runner)</option>
-                  </select>
+                    onChange={(val) => setNewModel(val)}
+                    options={[
+                      { value: "Claude 3.5 Sonnet", label: "Claude 3.5 Sonnet", description: "高精度代码与长上下文" },
+                      { value: "GPT-4o", label: "GPT-4o", description: "通用逻辑与拆解" },
+                      { value: "DeepSeek-R1", label: "DeepSeek-R1", description: "深度思维链" },
+                      { value: "自动化环境 (Test Runner)", label: "自动化环境 (Test Runner)", description: "测试运行" },
+                    ]}
+                  />
                 </label>
 
                 <label>
                   推荐推理深度
-                  <select
+                  <DrawerSelect
                     value={newReasoning}
-                    onChange={(e) => setNewReasoning(e.target.value)}
-                  >
-                    <option value="快速">快速 (Low)</option>
-                    <option value="标准">标准 (Medium)</option>
-                    <option value="深度">深度 (High)</option>
-                    <option value="极致思维">极致思维 (Extreme)</option>
-                  </select>
+                    onChange={(val) => setNewReasoning(val)}
+                    options={[
+                      { value: "快速", label: "快速 (Low)", description: "快速响应" },
+                      { value: "标准", label: "标准 (Medium)", description: "平衡思考" },
+                      { value: "深度", label: "深度 (High)", description: "深度推演" },
+                      { value: "极致思维", label: "极致思维 (Extreme)", description: "全量思维链" },
+                    ]}
+                  />
                 </label>
               </div>
 

@@ -30,6 +30,7 @@ import {
 } from "./api";
 import { loadAgentRoles, type AgentRoleConfig } from "./AgentManagerView";
 import { getTaskProjectLinks } from "./TasksListView";
+import { DrawerSelect, type DrawerSelectOption } from "./DrawerSelect";
 import {
   IconCpu,
   IconFolder,
@@ -1163,16 +1164,16 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
             <div className="modal-body-form">
               <label>
                 <span>功能担任 (Role)</span>
-                <select
+                <DrawerSelect
                   value={newNodeRole}
-                  onChange={(e) => handleRoleSelectChange(e.target.value)}
-                >
-                  {availableRoles.map((r) => (
-                    <option key={r.id} value={r.roleName}>
-                      {r.roleName} — {r.description.slice(0, 24)}…
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => handleRoleSelectChange(val)}
+                  options={availableRoles.map((r) => ({
+                    value: r.roleName,
+                    label: r.roleName,
+                    description: r.description,
+                    badge: r.isBuiltin ? "系统内置" : undefined,
+                  }))}
+                />
               </label>
 
               <label>
@@ -1188,28 +1189,30 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
               <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "12px" }}>
                 <label>
                   <span>驱动模型</span>
-                  <select
+                  <DrawerSelect
                     value={newNodeModel}
-                    onChange={(e) => setNewNodeModel(e.target.value)}
-                  >
-                    <option value="Claude 3.5 Sonnet">Claude 3.5 Sonnet</option>
-                    <option value="GPT-4o">GPT-4o</option>
-                    <option value="DeepSeek-R1">DeepSeek-R1</option>
-                    <option value="本地仿真模型">本地仿真模型 (Mock Agent)</option>
-                  </select>
+                    onChange={(val) => setNewNodeModel(val)}
+                    options={[
+                      { value: "Claude 3.5 Sonnet", label: "Claude 3.5 Sonnet", description: "高精度代码编写与长上下文" },
+                      { value: "GPT-4o", label: "GPT-4o", description: "全能多模态与通用推理" },
+                      { value: "DeepSeek-R1", label: "DeepSeek-R1", description: "深度思维链与架构决策" },
+                      { value: "本地仿真模型", label: "本地仿真模型", description: "Mock Agent 独立隔离沙箱" },
+                    ]}
+                  />
                 </label>
 
                 <label>
                   <span>推理程度</span>
-                  <select
+                  <DrawerSelect
                     value={newNodeReasoning}
-                    onChange={(e) => setNewNodeReasoning(e.target.value)}
-                  >
-                    <option value="极高 (High Thinking)">极高 (High Thinking)</option>
-                    <option value="高 (Standard Deep)">高 (Standard Deep)</option>
-                    <option value="中等 (Medium)">中等 (Medium)</option>
-                    <option value="快速响应 (Low)">快速响应 (Low)</option>
-                  </select>
+                    onChange={(val) => setNewNodeReasoning(val)}
+                    options={[
+                      { value: "极高 (High Thinking)", label: "极高 (High Thinking)", description: "最完整深思链与多轮自检" },
+                      { value: "高 (Standard Deep)", label: "高 (Standard Deep)", description: "标准深度分析与逐步推理" },
+                      { value: "中等 (Medium)", label: "中等 (Medium)", description: "平衡质量与执行耗时" },
+                      { value: "快速响应 (Low)", label: "快速响应 (Low)", description: "超低延迟直接交付" },
+                    ]}
+                  />
                 </label>
               </div>
             </div>

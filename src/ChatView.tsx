@@ -15,6 +15,7 @@ import {
   detectLocalEndpoints,
 } from "./agentAdapter";
 import { ProviderModal } from "./ProviderModal";
+import { DrawerSelect } from "./DrawerSelect";
 import {
   IconSparkles,
   IconFolder,
@@ -747,37 +748,50 @@ export function ChatView({
             </button>
 
             {/* Model Pill */}
-            <div className="gpt-meta-select-wrapper">
-              <span className="select-icon" style={{ display: "inline-flex", alignItems: "center" }}>
-                <IconCpu size={13} />
-              </span>
-              <select
-                className="gpt-meta-select-clean"
+            <div style={{ position: "relative" }}>
+              <DrawerSelect
+                size="sm"
                 value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-              >
-                {activeProvider.models.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setSelectedModel(val)}
+                options={activeProvider.models.map((m) => ({
+                  value: m,
+                  label: m,
+                  icon: <IconCpu size={12} stroke="#787774" />,
+                  description: m.includes("3.5") || m.includes("Claude")
+                    ? "代码生成与高精度推理"
+                    : m.includes("4o")
+                    ? "全能多模态通用模型"
+                    : "高速响应端点",
+                }))}
+                triggerStyle={{
+                  border: "1px solid var(--apple-border)",
+                  borderRadius: "6px",
+                  padding: "3px 8px",
+                  fontSize: "12px",
+                  background: "#ffffff",
+                }}
+              />
             </div>
 
             {/* Reasoning Level Pill */}
-            <div className="gpt-meta-select-wrapper">
-              <span className="select-icon" style={{ display: "inline-flex", alignItems: "center" }}>
-                <IconBrain size={13} />
-              </span>
-              <select
-                className="gpt-meta-select-clean"
+            <div style={{ position: "relative" }}>
+              <DrawerSelect
+                size="sm"
                 value={selectedReasoning}
-                onChange={(e) => setSelectedReasoning(e.target.value)}
-              >
-                <option value="快速 (Low)">快速 (Low)</option>
-                <option value="平衡 (Medium)">平衡 (Medium)</option>
-                <option value="深度 (High)">深度 (High)</option>
-              </select>
+                onChange={(val) => setSelectedReasoning(val)}
+                options={[
+                  { value: "快速 (Low)", label: "快速 (Low)", description: "超快响应，执行轻量级任务" },
+                  { value: "平衡 (Medium)", label: "平衡 (Medium)", description: "速度与推理兼顾" },
+                  { value: "深度 (High)", label: "深度 (High)", description: "全链条长思考与严格自检" },
+                ]}
+                triggerStyle={{
+                  border: "1px solid var(--apple-border)",
+                  borderRadius: "6px",
+                  padding: "3px 8px",
+                  fontSize: "12px",
+                  background: "#ffffff",
+                }}
+              />
             </div>
           </div>
 

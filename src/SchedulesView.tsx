@@ -18,6 +18,7 @@ import {
   IconTasks,
   IconCpu,
 } from "./icons";
+import { DrawerSelect } from "./DrawerSelect";
 
 interface Props {
   onTriggerRun: (runId: string) => void;
@@ -469,29 +470,28 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                 <IconUser size={14} />
               </span>
               <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", flex: 1 }}>
-                <select
-                  className="feishu-select"
+                <DrawerSelect
+                  size="sm"
                   value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                >
-                  {modelOptions.map((m) => (
-                    <option key={m.id} value={m.label}>
-                      {m.label} ({m.desc})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setSelectedModel(val)}
+                  options={modelOptions.map((m) => ({
+                    value: m.label,
+                    label: m.label,
+                    description: m.desc,
+                  }))}
+                  triggerStyle={{ minWidth: "170px" }}
+                />
 
-                <select
-                  className="feishu-select"
+                <DrawerSelect
+                  size="sm"
                   value={selectedReasoning}
-                  onChange={(e) => setSelectedReasoning(e.target.value)}
-                >
-                  {reasoningOptions.map((r) => (
-                    <option key={r.id} value={r.label}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setSelectedReasoning(val)}
+                  options={reasoningOptions.map((r) => ({
+                    value: r.label,
+                    label: r.label,
+                  }))}
+                  triggerStyle={{ minWidth: "115px" }}
+                />
               </div>
             </div>
 
@@ -541,16 +541,18 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
 
                 {isCustomTime && (
                   <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "4px" }}>
-                    <select
-                      className="feishu-select"
+                    <DrawerSelect
+                      size="sm"
                       value={customFrequency}
-                      onChange={(e) => setCustomFrequency(e.target.value as typeof customFrequency)}
-                    >
-                      <option value="daily">每天</option>
-                      <option value="workdays">工作日 (周一至周五)</option>
-                      <option value="weekly">每周</option>
-                      <option value="hourly">每小时</option>
-                    </select>
+                      onChange={(val) => setCustomFrequency(val as typeof customFrequency)}
+                      options={[
+                        { value: "daily", label: "每天" },
+                        { value: "workdays", label: "工作日 (周一至周五)" },
+                        { value: "weekly", label: "每周" },
+                        { value: "hourly", label: "每小时" },
+                      ]}
+                      triggerStyle={{ minWidth: "140px" }}
+                    />
 
                     {customFrequency !== "hourly" && (
                       <input
@@ -562,19 +564,21 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                     )}
 
                     {customFrequency === "weekly" && (
-                      <select
-                        className="feishu-select"
+                      <DrawerSelect
+                        size="sm"
                         value={customWeekday}
-                        onChange={(e) => setCustomWeekday(e.target.value)}
-                      >
-                        <option value="1">周一</option>
-                        <option value="2">周二</option>
-                        <option value="3">周三</option>
-                        <option value="4">周四</option>
-                        <option value="5">周五</option>
-                        <option value="6">周六</option>
-                        <option value="0">周日</option>
-                      </select>
+                        onChange={(val) => setCustomWeekday(val)}
+                        options={[
+                          { value: "1", label: "周一" },
+                          { value: "2", label: "周二" },
+                          { value: "3", label: "周三" },
+                          { value: "4", label: "周四" },
+                          { value: "5", label: "周五" },
+                          { value: "6", label: "周六" },
+                          { value: "0", label: "周日" },
+                        ]}
+                        triggerStyle={{ minWidth: "85px" }}
+                      />
                     )}
                   </div>
                 )}
