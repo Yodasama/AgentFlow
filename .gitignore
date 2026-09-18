@@ -1,0 +1,10 @@
+/node_modules/
+/dist/
+/target/
+/src-tauri/binaries/agentflow-runner-*
+/src-tauri/gen/
+*.tsbuildinfo
+/vite.config.js
+/vite.config.d.ts
+.DS_Store
+npm-debug.log*
