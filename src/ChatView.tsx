@@ -28,6 +28,7 @@ import {
   getActiveProvider,
   getStoredProviders,
   detectLocalEndpoints,
+  UnifiedAgentAdapter,
 } from "./agentAdapter";
 import { ProviderModal } from "./ProviderModal";
 import { DrawerSelect, type DrawerSelectOption } from "./DrawerSelect";
@@ -97,6 +98,17 @@ export interface ServerActionCardData {
   summary: string;
 }
 
+export interface CliExecutionCardData {
+  agentName: string;
+  command: string;
+  workspacePath: string;
+  exitCode: number | null;
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+}
+
 interface GrillMeQuestion {
   question: string;
   options: string[];
@@ -109,6 +121,7 @@ interface ChatMessage {
   plan?: PlanCardData;
   schedule?: ScheduleCardData;
   serverAction?: ServerActionCardData;
+  cliExecution?: CliExecutionCardData;
   grillMe?: {
     topic: string;
     questions: GrillMeQuestion[];
@@ -523,6 +536,75 @@ export function ChatView({
     setBusy(true);
 
     setTimeout(() => {
+      // 0. CLI Agent Direct Execution Pattern (agy / codex)
+      const isCliAgent =
+        activeProvider.type === "local_cli" ||
+        selectedModel.toLowerCase().includes("agy") ||
+        selectedModel.toLowerCase().includes("codex");
+
+      if (isCliAgent && !query.includes("定时") && !query.includes("每天")) {
+        const isAgy = activeProvider.id.includes("agy") || selectedModel.toLowerCase().includes("agy");
+        const agentName = isAgy ? "Google Antigravity (agy)" : "OpenAI Codex CLI (codex)";
+        const startTime = Date.now();
+
+        const statusMsgId = `msg-ai-${Date.now()}`;
+        const statusMsg: ChatMessage = {
+          id: statusMsgId,
+          sender: "assistant",
+          content: `正在调用本地 CLI Agent【${agentName}】在工作区【${activeWorkspace.name}】（分支: ${currentBranch}）中执行任务，请稍候…`,
+        };
+        setMessages((prev) => [...prev, statusMsg]);
+
+        void (async () => {
+          try {
+            const res = await UnifiedAgentAdapter.execute({
+              providerId: activeProvider.id,
+              model: selectedModel,
+              messages: [{ role: "user", content: query }],
+              workspacePath: activeWorkspace.path,
+              reasoningEffort: selectedReasoning.includes("深度") ? "深度" : "快速",
+            });
+
+            const durationMs = Date.now() - startTime;
+            const fullCmd = isAgy
+              ? `${activeProvider.baseUrl || "agy"} -p "${query}" --dangerously-skip-permissions`
+              : `${activeProvider.baseUrl || "codex"} exec "${query}" -C "${activeWorkspace.path}" --dangerously-bypass-approvals-and-sandbox`;
+
+            const hasErr = res.content.startsWith("[CLI 执行错误]") || res.content.includes("CLI 退出码异常");
+
+            const executionCard: CliExecutionCardData = {
+              agentName,
+              command: fullCmd,
+              workspacePath: activeWorkspace.path,
+              exitCode: hasErr ? 1 : 0,
+              success: !hasErr,
+              stdout: res.content,
+              stderr: "",
+              durationMs,
+            };
+
+            const aiMsg: ChatMessage = {
+              id: `msg-ai-${Date.now()}`,
+              sender: "assistant",
+              content: `本地 CLI Agent【${agentName}】已在工作区【${activeWorkspace.name}】完成执行：`,
+              cliExecution: executionCard,
+            };
+
+            setMessages((prev) => [...prev.filter((m) => m.id !== statusMsgId), aiMsg]);
+          } catch (err) {
+            const errMsg: ChatMessage = {
+              id: `msg-ai-${Date.now()}`,
+              sender: "assistant",
+              content: `调用本地 CLI Agent 失败: ${String(err)}`,
+            };
+            setMessages((prev) => [...prev.filter((m) => m.id !== statusMsgId), errMsg]);
+          } finally {
+            setBusy(false);
+          }
+        })();
+        return;
+      }
+
       // 1. Scheduled Task Pattern
       if (query.includes("定时") || query.includes("每天") || query.includes("小时") || query.includes("每周")) {
         const schedCard: ScheduleCardData = {
@@ -812,6 +894,12 @@ export function ChatView({
           icon: <IconCpu size={13} stroke="#787774" />,
         },
       ]),
+    {
+      value: "__switch_provider__",
+      label: "⇄ 切换接入源 (agy / codex / API)…",
+      description: "配置或选用 Google agy CLI、OpenAI codex CLI、云端 API",
+      icon: <IconSettings size={13} stroke="#787774" />,
+    },
   ];
 
   const envOptions: DrawerSelectOption[] = [
@@ -1318,6 +1406,41 @@ export function ChatView({
                         </div>
                       </div>
                     )}
+
+                    {/* Local CLI Agent Execution Terminal Card */}
+                    {m.cliExecution && (
+                      <div className="gpt-card-artifact cli-execution-card">
+                        <div className="card-artifact-top">
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                              <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                <IconCpu size={15} />
+                                {m.cliExecution.agentName}
+                              </strong>
+                              <span className={`apple-pill ${m.cliExecution.success ? "succeeded" : "failed"}`} style={{ fontSize: "10.5px" }}>
+                                {m.cliExecution.success ? "执行成功" : `退出码 ${m.cliExecution.exitCode}`}
+                              </span>
+                              <span className="server-target-tag">
+                                ⏱️ {(m.cliExecution.durationMs / 1000).toFixed(1)}s
+                              </span>
+                            </div>
+                            <p style={{ fontSize: "12px", color: "#6e6e73", margin: "4px 0 0" }}>
+                              工作区路径：{m.cliExecution.workspacePath}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Terminal Box */}
+                        <div className="cli-terminal-box">
+                          <div className="cli-terminal-header">
+                            <span className="cli-cmd-display">$ {m.cliExecution.command}</span>
+                          </div>
+                          <pre className="cli-terminal-output">
+                            {m.cliExecution.stdout || "(无标准输出)"}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1472,6 +1595,10 @@ export function ChatView({
                   size="sm"
                   value={`${selectedModel}:::${selectedReasoning.startsWith("深度") ? "深度" : "轻度"}`}
                   onChange={(val) => {
+                    if (val === "__switch_provider__") {
+                      setShowProviderModal(true);
+                      return;
+                    }
                     const [m, r] = val.split(":::");
                     if (m) setSelectedModel(m);
                     if (r) setSelectedReasoning(r === "深度" ? "深度 (High)" : "快速 (Low)");

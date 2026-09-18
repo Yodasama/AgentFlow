@@ -1,4 +1,13 @@
-export type ProviderType = "local_ollama" | "local_lmstudio" | "cloud_anthropic" | "cloud_openai" | "cloud_deepseek" | "custom_api";
+import { detectLocalCliAgents, runCliAgent } from "./api";
+
+export type ProviderType =
+  | "local_ollama"
+  | "local_lmstudio"
+  | "local_cli"
+  | "cloud_anthropic"
+  | "cloud_openai"
+  | "cloud_deepseek"
+  | "custom_api";
 
 export interface AgentProviderConfig {
   id: string;
@@ -41,6 +50,26 @@ const PROVIDERS_STORAGE_KEY = "agentflow_agent_providers_v1";
 const ACTIVE_PROVIDER_STORAGE_KEY = "agentflow_active_provider_id_v1";
 
 export const DEFAULT_PROVIDERS: AgentProviderConfig[] = [
+  {
+    id: "provider-cli-agy",
+    name: "Google Antigravity (agy CLI)",
+    type: "local_cli",
+    baseUrl: "/Users/yida/.local/bin/agy",
+    isLocal: true,
+    detected: true,
+    statusMessage: "本地 CLI 原生执行器 · 支持自主工具调用与工作区任务",
+    models: ["agy (默认模式)", "agy (Gemini 2.0)", "agy (深度思考)"],
+  },
+  {
+    id: "provider-cli-codex",
+    name: "OpenAI Codex CLI (codex)",
+    type: "local_cli",
+    baseUrl: "/Users/yida/.local/bin/codex",
+    isLocal: true,
+    detected: true,
+    statusMessage: "本地 Codex 引擎 · 自动化代码编写与工程重构",
+    models: ["codex exec (全权限模式)", "codex (默认)"],
+  },
   {
     id: "provider-claude",
     name: "Anthropic Claude (官方 API)",
@@ -104,7 +133,20 @@ export function getStoredProviders(): AgentProviderConfig[] {
       return DEFAULT_PROVIDERS;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_PROVIDERS;
+    if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_PROVIDERS;
+
+    // Ensure newly introduced CLI providers are merged in
+    let changed = false;
+    for (const def of DEFAULT_PROVIDERS) {
+      if (!parsed.some((p) => p.id === def.id)) {
+        parsed.unshift(def);
+        changed = true;
+      }
+    }
+    if (changed) {
+      localStorage.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify(parsed));
+    }
+    return parsed;
   } catch {
     return DEFAULT_PROVIDERS;
   }
@@ -127,18 +169,45 @@ export function setActiveProviderId(id: string): void {
 
 /**
  * 自动检测本地运行环境 (Auto-Detect Local Services)
- * 检测本地 Ollama (11434) 和 LM Studio (1234) 端点是否在线
+ * 检测本地 CLI Agent (agy / codex) 以及 Ollama (11434) 和 LM Studio (1234) 端点是否在线
  */
 export async function detectLocalEndpoints(): Promise<{
   ollamaOnline: boolean;
   lmStudioOnline: boolean;
   ollamaModels: string[];
+  cliAgyAvailable: boolean;
+  cliCodexAvailable: boolean;
 }> {
   let ollamaOnline = false;
   let lmStudioOnline = false;
   const ollamaModels: string[] = [];
+  let cliAgyAvailable = false;
+  let cliCodexAvailable = false;
+  let agyPath: string | null = null;
+  let codexPath: string | null = null;
+  let agyVersion: string | null = null;
+  let codexVersion: string | null = null;
 
-  // Ping Ollama tags
+  // 1. Detect Local CLI agents via Tauri invoke
+  try {
+    const detectedClis = await detectLocalCliAgents();
+    const agy = detectedClis.find((c) => c.id === "agy");
+    if (agy && agy.available) {
+      cliAgyAvailable = true;
+      agyPath = agy.executablePath;
+      agyVersion = agy.version;
+    }
+    const codex = detectedClis.find((c) => c.id === "codex");
+    if (codex && codex.available) {
+      cliCodexAvailable = true;
+      codexPath = codex.executablePath;
+      codexVersion = codex.version;
+    }
+  } catch (err) {
+    console.warn("detectLocalCliAgents failed:", err);
+  }
+
+  // 2. Ping Ollama tags
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 600);
@@ -158,7 +227,7 @@ export async function detectLocalEndpoints(): Promise<{
     ollamaOnline = false;
   }
 
-  // Ping LM Studio v1/models
+  // 3. Ping LM Studio v1/models
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 600);
@@ -178,6 +247,28 @@ export async function detectLocalEndpoints(): Promise<{
   const currentList = getStoredProviders();
   let changed = false;
   const updated = currentList.map((p) => {
+    if (p.id === "provider-cli-agy") {
+      changed = true;
+      return {
+        ...p,
+        detected: cliAgyAvailable,
+        baseUrl: agyPath || p.baseUrl,
+        statusMessage: cliAgyAvailable
+          ? `已就绪 (${agyPath || "/Users/yida/.local/bin/agy"}) · 支持 -p 无交互执行`
+          : "未检测到本地 agy 命令 (检查 PATH 或安装路径)",
+      };
+    }
+    if (p.id === "provider-cli-codex") {
+      changed = true;
+      return {
+        ...p,
+        detected: cliCodexAvailable,
+        baseUrl: codexPath || p.baseUrl,
+        statusMessage: cliCodexAvailable
+          ? `已就绪 (${codexVersion || "codex-cli"}) · 支持 exec 自动化运行`
+          : "未检测到本地 codex 命令 (检查 PATH 或安装路径)",
+      };
+    }
     if (p.type === "local_ollama") {
       changed = true;
       return {
@@ -206,7 +297,7 @@ export async function detectLocalEndpoints(): Promise<{
     saveProviders(updated);
   }
 
-  return { ollamaOnline, lmStudioOnline, ollamaModels };
+  return { ollamaOnline, lmStudioOnline, ollamaModels, cliAgyAvailable, cliCodexAvailable };
 }
 
 /**
@@ -239,12 +330,57 @@ export class UnifiedAgentAdapter {
     const providers = getStoredProviders();
     const provider = providers.find((p) => p.id === req.providerId) || providers[0];
 
-    // Check if we have API key for cloud providers
-    const hasKey = Boolean(provider.apiKey && provider.apiKey.trim().length > 0);
+    // Handle Local CLI Agent execution (agy or codex)
+    if (provider.type === "local_cli") {
+      const userPrompt = req.messages.filter((m) => m.role === "user").pop()?.content || "";
+      let program = provider.baseUrl || "agy";
+      let args: string[] = [];
 
-    // If real API key provided, we can perform HTTP call, otherwise use mock studio engine
+      if (provider.id.includes("agy") || req.model.toLowerCase().includes("agy")) {
+        program = provider.baseUrl || "/Users/yida/.local/bin/agy";
+        args = ["-p", userPrompt, "--dangerously-skip-permissions"];
+        if (req.reasoningEffort === "深度") {
+          args.push("--effort", "high");
+        }
+      } else if (provider.id.includes("codex") || req.model.toLowerCase().includes("codex")) {
+        program = provider.baseUrl || "/Users/yida/.local/bin/codex";
+        args = ["exec", userPrompt, "--dangerously-bypass-approvals-and-sandbox"];
+        if (req.workspacePath) {
+          args.push("-C", req.workspacePath);
+        }
+      } else {
+        args = [userPrompt];
+      }
+
+      try {
+        const result = await runCliAgent(program, args, req.workspacePath);
+        const output =
+          result.stdout.trim() ||
+          result.stderr.trim() ||
+          (result.success ? "CLI 任务已成功执行完成。" : `CLI 退出码异常: ${result.exitCode}`);
+
+        return {
+          content: output,
+          model: req.model,
+          providerName: provider.name,
+          usage: {
+            promptTokens: userPrompt.length,
+            completionTokens: output.length,
+            totalTokens: userPrompt.length + output.length,
+          },
+        };
+      } catch (err) {
+        return {
+          content: `[CLI 执行错误] 无法拉起命令 ${program}: ${String(err)}`,
+          model: req.model,
+          providerName: provider.name,
+        };
+      }
+    }
+
+    // Standard simulated response for cloud or other endpoints without keys
     return {
-      content: `[Unified Adapter: ${provider.name}] 已接收统一消息格式，模型：${req.model} (${req.reasoningEffort || "标准"})`,
+      content: `[Unified Adapter: ${provider.name}] 已接收消息，执行模型：${req.model} (${req.reasoningEffort || "标准"})`,
       model: req.model,
       providerName: provider.name,
       usage: {

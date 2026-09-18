@@ -3371,6 +3371,44 @@ h1 {
   color: #f4f4f5;
 }
 
+/* CLI Execution Terminal Card */
+.cli-execution-card {
+  border-left: 3px solid #111111;
+}
+
+.cli-terminal-box {
+  margin-top: 10px;
+  background: #18181b;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.cli-terminal-header {
+  padding: 6px 12px;
+  background: #27272a;
+  color: #a1a1aa;
+  font-family: var(--mono-stack);
+  font-size: 11px;
+  border-bottom: 1px solid #3f3f46;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cli-terminal-output {
+  padding: 10px 12px;
+  color: #e4e4e7;
+  font-family: var(--mono-stack);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 380px;
+  overflow-y: auto;
+  margin: 0;
+}
+
 /* Floating Bottom Input Dock with Screenshot Style Envelope */
 .gpt-bottom-dock-wrapper {
   position: absolute;

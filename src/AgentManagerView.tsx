@@ -311,6 +311,8 @@ export function AgentManagerView() {
                   value={selected.defaultModel}
                   onChange={(val) => updateSelectedRole({ defaultModel: val })}
                   options={[
+                    { value: "Google agy (CLI Agent)", label: "Google agy (CLI Agent)", description: "本地 Antigravity 编码代理" },
+                    { value: "OpenAI codex (CLI Agent)", label: "OpenAI codex (CLI Agent)", description: "本地 Codex 自动化代理" },
                     { value: "Claude 3.5 Sonnet", label: "Claude 3.5 Sonnet", description: "长上下文与架构" },
                     { value: "GPT-4o", label: "GPT-4o", description: "逻辑与拆解" },
                     { value: "DeepSeek-R1", label: "DeepSeek-R1", description: "深度思维链" },
@@ -424,6 +426,8 @@ export function AgentManagerView() {
                     value={newModel}
                     onChange={(val) => setNewModel(val)}
                     options={[
+                      { value: "Google agy (CLI Agent)", label: "Google agy (CLI Agent)", description: "本地 Antigravity 编码代理" },
+                      { value: "OpenAI codex (CLI Agent)", label: "OpenAI codex (CLI Agent)", description: "本地 Codex 自动化代理" },
                       { value: "Claude 3.5 Sonnet", label: "Claude 3.5 Sonnet", description: "高精度代码与长上下文" },
                       { value: "GPT-4o", label: "GPT-4o", description: "通用逻辑与拆解" },
                       { value: "DeepSeek-R1", label: "DeepSeek-R1", description: "深度思维链" },

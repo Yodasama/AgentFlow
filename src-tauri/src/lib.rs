@@ -357,6 +357,141 @@ fn delete_goal(id: String, state: State<'_, AppCoreState>) -> Result<(), String>
         .map_err(|error| error.to_string())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectedCliAgent {
+    pub id: String,
+    pub name: String,
+    pub executable_path: Option<String>,
+    pub available: bool,
+    pub version: Option<String>,
+}
+
+fn which_in_path(cmd: &str) -> Option<PathBuf> {
+    std::process::Command::new("which")
+        .arg(cmd)
+        .output()
+        .ok()
+        .and_then(|out| {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !s.is_empty() {
+                    return Some(PathBuf::from(s));
+                }
+            }
+            None
+        })
+}
+
+#[tauri::command]
+fn detect_local_cli_agents() -> Vec<DetectedCliAgent> {
+    let mut agents = Vec::new();
+    let home = std::env::var("HOME").ok().map(PathBuf::from);
+
+    // 1. Detect agy
+    let agy_candidates = [
+        home.as_ref().map(|h| h.join(".local/bin/agy")),
+        Some(PathBuf::from("/usr/local/bin/agy")),
+        Some(PathBuf::from("/opt/homebrew/bin/agy")),
+    ];
+    let agy_path = agy_candidates
+        .into_iter()
+        .flatten()
+        .find(|p| p.is_file())
+        .or_else(|| which_in_path("agy"));
+    let agy_avail = agy_path.is_some();
+    agents.push(DetectedCliAgent {
+        id: "agy".to_string(),
+        name: "Google Antigravity (agy)".to_string(),
+        executable_path: agy_path.map(|p| p.to_string_lossy().to_string()),
+        available: agy_avail,
+        version: if agy_avail { Some("已就绪".to_string()) } else { None },
+    });
+
+    // 2. Detect codex
+    let codex_candidates = [
+        home.as_ref().map(|h| h.join(".local/bin/codex")),
+        Some(PathBuf::from("/usr/local/bin/codex")),
+        Some(PathBuf::from("/opt/homebrew/bin/codex")),
+    ];
+    let codex_path = codex_candidates
+        .into_iter()
+        .flatten()
+        .find(|p| p.is_file())
+        .or_else(|| which_in_path("codex"));
+    let codex_version = codex_path.as_ref().and_then(|p| {
+        std::process::Command::new(p)
+            .arg("--version")
+            .output()
+            .ok()
+            .and_then(|out| {
+                if out.status.success() {
+                    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+    });
+    let codex_avail = codex_path.is_some();
+    agents.push(DetectedCliAgent {
+        id: "codex".to_string(),
+        name: "OpenAI Codex CLI (codex)".to_string(),
+        executable_path: codex_path.map(|p| p.to_string_lossy().to_string()),
+        available: codex_avail,
+        version: codex_version.or_else(|| if codex_avail { Some("已就绪".to_string()) } else { None }),
+    });
+
+    agents
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliAgentExecutionResult {
+    pub success: bool,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[tauri::command]
+async fn run_cli_agent(
+    program: String,
+    arguments: Vec<String>,
+    working_directory: Option<String>,
+) -> Result<CliAgentExecutionResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = std::process::Command::new(&program);
+        cmd.args(&arguments);
+        if let Some(ref cwd) = working_directory {
+            if !cwd.trim().is_empty() {
+                cmd.current_dir(cwd);
+            }
+        }
+
+        if let Ok(home) = std::env::var("HOME") {
+            let existing_path = std::env::var("PATH").unwrap_or_default();
+            let full_path = format!("{home}/.local/bin:/usr/local/bin:/opt/homebrew/bin:{existing_path}");
+            cmd.env("PATH", full_path);
+        }
+
+        let output = cmd
+            .output()
+            .map_err(|err| format!("启动 CLI 命令失败 [{program}]: {err}"))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        Ok(CliAgentExecutionResult {
+            success: output.status.success(),
+            exit_code: output.status.code(),
+            stdout,
+            stderr,
+        })
+    })
+    .await
+    .map_err(|err| format!("CLI 异步执行异常: {err}"))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -415,7 +550,9 @@ pub fn run() {
             list_goals,
             save_goal,
             toggle_milestone,
-            delete_goal
+            delete_goal,
+            detect_local_cli_agents,
+            run_cli_agent
         ])
         .run(tauri::generate_context!())
         .expect("failed to run AgentFlow");

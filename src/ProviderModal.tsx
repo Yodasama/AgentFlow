@@ -12,6 +12,7 @@ import {
   IconSearch,
   IconLaptop,
   IconCloud,
+  IconCpu,
   IconCheck,
 } from "./icons";
 
@@ -38,10 +39,16 @@ export function ProviderModal({ activeProvider, onSelectProvider, onClose }: Pro
       const res = await detectLocalEndpoints();
       const updated = getStoredProviders();
       setProviders(updated);
-      const onlineCount = (res.ollamaOnline ? 1 : 0) + (res.lmStudioOnline ? 1 : 0);
-      setDetectSummary(`检测完成：发现 ${onlineCount} 个本地端点在线（Ollama: ${res.ollamaOnline ? "在线" : "离线"}，LM Studio: ${res.lmStudioOnline ? "在线" : "离线"}）`);
+      const onlineCount =
+        (res.cliAgyAvailable ? 1 : 0) +
+        (res.cliCodexAvailable ? 1 : 0) +
+        (res.ollamaOnline ? 1 : 0) +
+        (res.lmStudioOnline ? 1 : 0);
+      setDetectSummary(
+        `检测完成：已发现 ${onlineCount} 个本地 Agent / 端点（agy: ${res.cliAgyAvailable ? "已就绪" : "未就绪"}，codex: ${res.cliCodexAvailable ? "已就绪" : "未就绪"}，Ollama: ${res.ollamaOnline ? "在线" : "离线"}）`
+      );
     } catch {
-      setDetectSummary("本地端点检测超时或未运行。");
+      setDetectSummary("本地环境检测超时。");
     } finally {
       setDetecting(false);
     }
@@ -101,14 +108,14 @@ export function ProviderModal({ activeProvider, onSelectProvider, onClose }: Pro
         </div>
 
         <p style={{ fontSize: "12px", color: "#86868b", marginBottom: "14px" }}>
-          支持本地模型环境自动探查（Ollama / LM Studio）与云端 API 直连（Claude / OpenAI / DeepSeek），通过 Unified Adapter 统一消息协议。
+          支持本地原生 CLI Agent (agy / codex)、本地模型环境 (Ollama / LM Studio) 与云端 API 直连，通过 Unified Adapter 统一编排调度。
         </p>
 
         {/* Action Bar: Auto Detect Button */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "#fbfbfd", border: "1px solid #e5e5ea", borderRadius: "8px", marginBottom: "14px" }}>
           <div>
             <strong style={{ fontSize: "12.5px", color: "#1d1d1f" }}>本地环境探活</strong>
-            <div style={{ fontSize: "11px", color: "#86868b" }}>自动扫描端口 11434 (Ollama) 与 1234 (LM Studio)</div>
+            <div style={{ fontSize: "11px", color: "#86868b" }}>自动扫描本地 CLI Agent (agy / codex) 与服务端口 11434 / 1234</div>
           </div>
           <button
             type="button"
@@ -144,10 +151,14 @@ export function ProviderModal({ activeProvider, onSelectProvider, onClose }: Pro
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <span style={{ display: "inline-flex", alignItems: "center" }}>
-                      {p.isLocal ? <IconLaptop size={14} /> : <IconCloud size={14} />}
+                      {p.type === "local_cli" ? <IconCpu size={14} /> : p.isLocal ? <IconLaptop size={14} /> : <IconCloud size={14} />}
                     </span>
                     <strong style={{ fontSize: "13px", color: "#1d1d1f" }}>{p.name}</strong>
-                    {p.isLocal ? (
+                    {p.type === "local_cli" ? (
+                      <span className={`apple-pill ${p.detected ? "succeeded" : "queued"}`} style={{ fontSize: "10px" }}>
+                        {p.detected ? "已就绪" : "未发现"}
+                      </span>
+                    ) : p.isLocal ? (
                       <span className={`apple-pill ${p.detected ? "succeeded" : "queued"}`} style={{ fontSize: "10px" }}>
                         {p.detected ? "在线" : "离线"}
                       </span>
@@ -193,7 +204,7 @@ export function ProviderModal({ activeProvider, onSelectProvider, onClose }: Pro
                 </div>
 
                 <div style={{ fontSize: "11px", color: "#6e6e73", marginTop: "2px" }}>
-                  支持模型：{p.models.join(" · ")}
+                  支持模式 / 模型：{p.models.join(" · ")}
                 </div>
 
                 {/* Inline Configuration Editor */}
@@ -216,10 +227,10 @@ export function ProviderModal({ activeProvider, onSelectProvider, onClose }: Pro
                       </label>
                     )}
                     <label style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "11px", marginBottom: "8px" }}>
-                      API Base URL:
+                      {p.type === "local_cli" ? "CLI 可执行文件路径:" : "API Base URL:"}
                       <input
                         className="feishu-input"
-                        placeholder="https://..."
+                        placeholder={p.type === "local_cli" ? "/Users/yida/.local/bin/agy" : "https://..."}
                         value={editBaseUrl}
                         onChange={(e) => setEditBaseUrl(e.target.value)}
                       />

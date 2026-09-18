@@ -301,3 +301,32 @@ export const toggleMilestone = (milestoneId: string) =>
 
 export const deleteGoal = (id: string) =>
   invoke<void>("delete_goal", { id });
+
+export interface DetectedCliAgent {
+  id: string;
+  name: string;
+  executablePath: string | null;
+  available: boolean;
+  version: string | null;
+}
+
+export interface CliAgentExecutionResult {
+  success: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+export const detectLocalCliAgents = () =>
+  invoke<DetectedCliAgent[]>("detect_local_cli_agents");
+
+export const runCliAgent = (
+  program: string,
+  argumentsList: string[],
+  workingDirectory?: string | null,
+) =>
+  invoke<CliAgentExecutionResult>("run_cli_agent", {
+    program,
+    arguments: argumentsList,
+    workingDirectory: workingDirectory || null,
+  });
