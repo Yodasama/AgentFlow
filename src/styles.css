@@ -1,26 +1,34 @@
-/* Apple HIG Minimalist & Restrained Theme */
+/* Apple HIG Minimalist & Restrained Theme (taste-skill aligned) */
 :root {
-  --apple-bg: #f5f5f7;
+  --apple-bg: #fbfbfa; /* Warm bone / off-white minimalist canvas */
   --apple-card: #ffffff;
-  --apple-card-subtle: #fbfbfd;
-  --apple-border: #e5e5ea;
-  --apple-border-light: #f0f0f2;
-  --apple-text-primary: #1d1d1f;
-  --apple-text-secondary: #86868b;
-  --apple-text-tertiary: #a1a1a6;
-  --apple-blue: #0071e3;
-  --apple-blue-hover: #0077ed;
-  --apple-blue-bg: #e8f2ff;
-  --apple-green: #24a159;
-  --apple-green-bg: #eafaf1;
-  --apple-orange: #d97706;
-  --apple-orange-bg: #fef6e7;
-  --apple-red: #e03e1a;
-  --apple-red-bg: #fdf0ed;
-  --apple-radius: 12px;
-  --apple-radius-sm: 8px;
-  --apple-radius-lg: 16px;
-  --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --apple-card-subtle: #f7f7f6;
+  --apple-border: #eaeaea; /* Crisp 1px structural border */
+  --apple-border-light: #f2f2f1;
+  --apple-text-primary: #111111; /* Off-black / charcoal */
+  --apple-text-secondary: #787774; /* Muted warm gray */
+  --apple-text-tertiary: #9b9a97;
+  
+  /* Desaturated Muted Spot Pastels (minimalist-ui) */
+  --apple-blue: #111111;
+  --apple-blue-hover: #2c2c2e;
+  --apple-blue-bg: #e1f3fe; /* Pale Blue */
+  --apple-blue-text: #1f6c9f;
+  
+  --apple-green: #346538;
+  --apple-green-bg: #edf3ec; /* Pale Green */
+  
+  --apple-orange: #956400;
+  --apple-orange-bg: #fbf3db; /* Pale Yellow / Amber */
+  
+  --apple-red: #9f2f2d;
+  --apple-red-bg: #fdebec; /* Pale Red */
+  
+  --apple-radius: 8px;
+  --apple-radius-sm: 6px;
+  --apple-radius-lg: 12px;
+  --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Geist Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono-stack: "SF Mono", "Geist Mono", "JetBrains Mono", Menlo, Monaco, monospace;
 }
 
 * {
@@ -38,7 +46,7 @@ body {
   font-family: var(--font-stack);
   background-color: var(--apple-bg);
   color: var(--apple-text-primary);
-  line-height: 1.45;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-width: 960px;
@@ -66,7 +74,7 @@ button, input, select, textarea {
   overflow-y: auto;
   background: var(--apple-card);
   border-right: 1px solid var(--apple-border);
-  padding: 26px 14px 20px;
+  padding: 24px 12px 18px;
   display: flex;
   flex-direction: column;
 }
@@ -74,7 +82,7 @@ button, input, select, textarea {
 /* Sidebar Bottom Navigation (Agent Management) */
 .sidebar-bottom {
   margin-top: auto;
-  padding-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid var(--apple-border-light);
   display: flex;
   flex-direction: column;
@@ -85,8 +93,8 @@ button, input, select, textarea {
   align-items: center;
   gap: 9px;
   width: 100%;
-  padding: 9px 12px;
-  border: 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
   border-radius: var(--apple-radius-sm);
   background: transparent;
   color: var(--apple-text-secondary);
@@ -94,7 +102,7 @@ button, input, select, textarea {
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: all 0.12s ease-in-out;
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .sidebar-bottom button:hover {
@@ -102,23 +110,29 @@ button, input, select, textarea {
   color: var(--apple-text-primary);
 }
 
+.sidebar-bottom button:active {
+  transform: scale(0.98);
+}
+
 .sidebar-bottom button.active {
-  background: var(--apple-bg);
-  color: var(--apple-blue);
+  background: #ffffff;
+  border-color: var(--apple-border);
+  color: #111111;
   font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 /* Typographic Artistic Brand Header */
 .brand {
-  padding: 8px 10px 24px;
+  padding: 4px 6px 18px;
 }
 
 .brand-artistic {
   font-family: -apple-system, BlinkMacSystemFont, "Didot", "Bodoni 72", "Baskerville", "Songti SC", Georgia, serif;
-  font-size: 24px;
+  font-size: 23px;
   font-weight: 700;
   letter-spacing: -0.025em;
-  color: #1d1d1f;
+  color: #111111;
   line-height: 1.1;
   user-select: none;
   cursor: default;
@@ -132,15 +146,14 @@ button, input, select, textarea {
   font-weight: 400;
   letter-spacing: 0.01em;
   margin-left: 2px;
-  background: linear-gradient(135deg, #0071e3 15%, #5e5ce6 85%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #111111;
+  opacity: 0.85;
 }
 
 nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 nav button {
@@ -148,8 +161,8 @@ nav button {
   align-items: center;
   gap: 9px;
   width: 100%;
-  padding: 9px 12px;
-  border: 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
   border-radius: var(--apple-radius-sm);
   background: transparent;
   color: var(--apple-text-secondary);
@@ -157,7 +170,7 @@ nav button {
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: all 0.12s ease-in-out;
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 nav button:hover {
@@ -165,14 +178,23 @@ nav button:hover {
   color: var(--apple-text-primary);
 }
 
+nav button:active {
+  transform: scale(0.98);
+}
+
 nav button.active {
-  background: var(--apple-bg);
-  color: var(--apple-blue);
+  background: #ffffff;
+  border-color: var(--apple-border);
+  color: #111111;
   font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .nav-icon {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
 }
 
 /* Main Area - Independently Scrollable */
@@ -181,7 +203,7 @@ main {
   height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 32px 48px;
+  padding: 30px 44px;
 }
 
 /* Page Headers */
@@ -189,11 +211,11 @@ main {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  margin-bottom: 24px;
+  margin-bottom: 22px;
 }
 
 h1 {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.025em;
   color: var(--apple-text-primary);
@@ -205,25 +227,30 @@ h1 {
   margin-top: 4px;
 }
 
-/* Apple Buttons */
+/* Apple Minimalist Buttons */
 .apple-btn-primary {
-  background: var(--apple-blue);
+  background: #111111;
   color: #ffffff;
-  border: 0;
+  border: 1px solid #111111;
   border-radius: var(--apple-radius-sm);
-  padding: 8px 16px;
+  padding: 7px 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
 }
 
 .apple-btn-primary:hover {
-  background: var(--apple-blue-hover);
+  background: #2a2a2a;
+  border-color: #2a2a2a;
+}
+
+.apple-btn-primary:active {
+  transform: scale(0.98);
 }
 
 .apple-btn-primary:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -232,20 +259,24 @@ h1 {
   color: var(--apple-text-primary);
   border: 1px solid var(--apple-border);
   border-radius: var(--apple-radius-sm);
-  padding: 7px 13px;
+  padding: 6px 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
 }
 
 .apple-btn-secondary:hover {
-  background: var(--apple-bg);
-  border-color: #d2d2d7;
+  background: #f7f7f6;
+  border-color: #d8d8d8;
+}
+
+.apple-btn-secondary:active {
+  transform: scale(0.98);
 }
 
 .apple-btn-secondary:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -367,13 +398,17 @@ h1 {
   color: var(--apple-text-secondary);
 }
 
-/* Apple Status Pills */
+/* Apple Status Pills (taste-skill muted pastels) */
 .apple-pill {
-  display: inline-block;
-  padding: 3px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
   border-radius: 99px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
   text-align: center;
   white-space: nowrap;
 }
@@ -385,11 +420,11 @@ h1 {
 
 .apple-pill.running {
   background: var(--apple-blue-bg);
-  color: var(--apple-blue);
+  color: var(--apple-blue-text);
 }
 
 .apple-pill.queued {
-  background: #f0f0f4;
+  background: #f4f4f4;
   color: var(--apple-text-secondary);
 }
 
@@ -404,7 +439,7 @@ h1 {
 }
 
 .apple-pill.cancelled {
-  background: #f0f0f4;
+  background: #f4f4f4;
   color: var(--apple-text-tertiary);
 }
 
@@ -2549,12 +2584,12 @@ h1 {
   font-style: italic;
 }
 
-/* Grill-Me Interactive Card (Codex Style) */
+/* Grill-Me Interactive Inquiry Card */
 .gpt-grillme-card {
   margin-top: 10px;
-  background: #fffcf8;
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius);
   padding: 16px 18px;
 }
 
@@ -2566,13 +2601,15 @@ h1 {
 }
 
 .grillme-flame {
-  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  color: #111111;
 }
 
 .grillme-title {
   font-size: 13px;
-  font-weight: 700;
-  color: #b45309;
+  font-weight: 600;
+  color: #111111;
 }
 
 .grillme-q-block {
@@ -2582,7 +2619,7 @@ h1 {
 .grillme-q-title {
   font-size: 13px;
   font-weight: 600;
-  color: #0d0d0d;
+  color: #111111;
   margin-bottom: 6px;
 }
 
@@ -2594,30 +2631,33 @@ h1 {
 
 .grillme-opt-btn {
   text-align: left;
-  border: 1px solid #e5e5e7;
-  background: #ffffff;
+  border: 1px solid var(--apple-border);
+  background: #fbfbfa;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--apple-radius-sm);
   font-size: 12.5px;
-  color: #1d1d1f;
+  color: #111111;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .grillme-opt-btn:hover {
-  background: #fff8ee;
-  border-color: #f59e0b;
-  color: #b45309;
+  background: #ffffff;
+  border-color: #111111;
+  color: #111111;
+}
+
+.grillme-opt-btn:active {
+  transform: scale(0.98);
 }
 
 /* Plan & Schedule Artifact Cards */
 .gpt-card-artifact {
   margin-top: 12px;
-  background: #fbfbfd;
-  border: 1px solid #e5e5e7;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius);
   padding: 16px 18px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
 }
 
 .card-artifact-top {
@@ -2629,28 +2669,34 @@ h1 {
 
 .gpt-ws-tag {
   font-size: 11px;
-  font-family: monospace;
-  background: #f0f0f4;
-  color: #0071e3;
+  font-family: var(--mono-stack);
+  background: var(--apple-bg);
+  border: 1px solid var(--apple-border);
+  color: var(--apple-text-secondary);
   padding: 2px 7px;
-  border-radius: 4px;
+  border-radius: var(--apple-radius-sm);
 }
 
 .gpt-btn-primary {
-  border: 0;
-  background: #0d0d0d;
+  border: 1px solid #111111;
+  background: #111111;
   color: #ffffff;
   padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: var(--apple-radius-sm);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  transition: opacity 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .gpt-btn-primary:hover {
-  opacity: 0.85;
+  background: #2a2a2a;
+  border-color: #2a2a2a;
+}
+
+.gpt-btn-primary:active {
+  transform: scale(0.98);
 }
 
 .card-phases-wrap {
@@ -2664,37 +2710,41 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #e5e5e7;
+  background: #fbfbfa;
+  border: 1px solid var(--apple-border);
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--apple-radius-sm);
 }
 
 .gpt-btn-secondary {
-  border: 1px solid #e5e5e7;
+  border: 1px solid var(--apple-border);
   background: #ffffff;
-  color: #0d0d0d;
-  padding: 4px 10px;
-  border-radius: 6px;
+  color: #111111;
+  padding: 5px 11px;
+  border-radius: var(--apple-radius-sm);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .gpt-btn-secondary:hover {
-  background: #f5f5f7;
-  border-color: #d1d1d6;
+  background: #f7f7f6;
+  border-color: #d8d8d8;
 }
 
-/* Floating Bottom Input Dock (ChatGPT Style) */
+.gpt-btn-secondary:active {
+  transform: scale(0.98);
+}
+
+/* Floating Bottom Input Dock */
 .gpt-bottom-dock-wrapper {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   padding: 0 20px 14px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.95) 45%, #ffffff 100%);
+  background: linear-gradient(180deg, rgba(251, 251, 250, 0) 0%, rgba(251, 251, 250, 0.95) 45%, #fbfbfa 100%);
   pointer-events: none;
   z-index: 20;
 }
@@ -2704,9 +2754,9 @@ h1 {
   max-width: 800px;
   margin: 0 auto;
   background: #ffffff;
-  border: 1px solid #e0e0e0;
-  border-radius: 18px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--apple-border);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
   padding: 8px 14px 10px;
   display: flex;
   flex-direction: column;
@@ -2721,47 +2771,55 @@ h1 {
 }
 
 .gpt-meta-pill {
-  border: 1px solid #e5e5e7;
-  background: #f5f5f7;
-  border-radius: 99px;
+  border: 1px solid var(--apple-border);
+  background: #ffffff;
+  border-radius: var(--apple-radius-sm);
   padding: 4px 10px;
   font-size: 11.5px;
-  color: #0d0d0d;
+  color: #111111;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  transition: all 0.12s ease;
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .gpt-meta-pill:hover {
-  background: #e8e8ed;
-  border-color: #d1d1d6;
+  background: #f7f7f6;
+  border-color: #d8d8d8;
+}
+
+.gpt-meta-pill:active {
+  transform: scale(0.98);
 }
 
 .pill-arrow {
-  color: #86868b;
+  color: var(--apple-text-secondary);
   font-size: 10px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .gpt-meta-select-wrapper {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border: 1px solid #e5e5e7;
-  background: #f5f5f7;
-  border-radius: 99px;
-  padding: 2px 8px 2px 10px;
-  transition: all 0.12s ease;
+  gap: 5px;
+  border: 1px solid var(--apple-border);
+  background: #ffffff;
+  border-radius: var(--apple-radius-sm);
+  padding: 2px 8px 2px 8px;
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .gpt-meta-select-wrapper:hover {
-  background: #e8e8ed;
-  border-color: #d1d1d6;
+  background: #f7f7f6;
+  border-color: #d8d8d8;
 }
 
 .select-icon {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--apple-text-secondary);
 }
 
 .gpt-meta-select-clean {
@@ -2769,7 +2827,7 @@ h1 {
   background: transparent;
   font-size: 11.5px;
   font-weight: 500;
-  color: #0d0d0d;
+  color: #111111;
   outline: none;
   cursor: pointer;
   padding: 2px 0;
@@ -2791,11 +2849,11 @@ h1 {
   max-height: 140px;
   background: transparent;
   padding: 4px 0;
-  color: #0d0d0d;
+  color: #111111;
 }
 
 .gpt-textarea::placeholder {
-  color: #8e8e93;
+  color: #9b9a97;
 }
 
 .gpt-send-circle-btn {
@@ -2803,28 +2861,31 @@ h1 {
   height: 32px;
   border-radius: 99px;
   border: 0;
-  background: #e5e5ea;
-  color: #8e8e93;
-  font-size: 15px;
-  font-weight: 700;
+  background: #f4f4f4;
+  color: #9b9a97;
+  font-size: 14px;
   cursor: not-allowed;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   flex-shrink: 0;
 }
 
 .gpt-send-circle-btn.active {
-  background: #000000;
+  background: #111111;
   color: #ffffff;
   cursor: pointer;
+}
+
+.gpt-send-circle-btn.active:active {
+  transform: scale(0.94);
 }
 
 .gpt-footer-disclaimer {
   text-align: center;
   font-size: 11px;
-  color: #8e8e93;
+  color: #9b9a97;
   margin-top: 6px;
 }
 
@@ -2834,9 +2895,9 @@ h1 {
   align-items: center;
   gap: 6px;
   margin-top: 8px;
-  padding: 4px 8px;
-  background: #f0f0f4;
-  border: 1px solid #e5e5ea;
+  padding: 5px 8px;
+  background: #ffffff;
+  border: 1px solid var(--apple-border);
   border-radius: 6px;
   font-size: 11px;
   color: #1d1d1f;

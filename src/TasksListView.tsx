@@ -7,6 +7,7 @@ import {
   type RunState,
   type GoalRecord,
 } from "./api";
+import { IconFolder, IconZap } from "./icons";
 
 const stateLabels: Record<RunState, string> = {
   queued: "排队中",
@@ -186,15 +187,19 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
           type="button"
           className={`filter-pill ${filterType === "project" ? "active" : ""}`}
           onClick={() => setFilterType("project")}
+          style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
         >
-          📁 规划关联任务 ({projectTasksCount})
+          <IconFolder size={12} />
+          <span>规划关联任务 ({projectTasksCount})</span>
         </button>
         <button
           type="button"
           className={`filter-pill ${filterType === "light" ? "active" : ""}`}
           onClick={() => setFilterType("light")}
+          style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
         >
-          ⚡️ 独立轻任务 ({lightTasksCount})
+          <IconZap size={12} />
+          <span>独立轻任务 ({lightTasksCount})</span>
         </button>
       </div>
 
@@ -241,12 +246,14 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                         <strong>{run.title}</strong>
                         {link ? (
-                          <span className="task-project-tag" title={`所属立项：${link.planTitle}`}>
-                            📁 {link.planTitle}
+                          <span className="task-project-tag" title={`所属立项：${link.planTitle}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <IconFolder size={11} />
+                            <span>{link.planTitle}</span>
                           </span>
                         ) : (
-                          <span className="task-light-tag">
-                            ⚡️ 独立轻任务
+                          <span className="task-light-tag" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <IconZap size={11} />
+                            <span>独立轻任务</span>
                           </span>
                         )}
                       </div>
@@ -296,10 +303,10 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
                   value={selectedPlanId}
                   onChange={(e) => setSelectedPlanId(e.target.value)}
                 >
-                  <option value="">🟢 无关联 (独立轻量任务)</option>
+                  <option value="">无关联 (独立轻量任务)</option>
                   {availablePlans.map((p) => (
                     <option key={p.id} value={p.id}>
-                      📁 [立项规划] {p.title}
+                      [立项规划] {p.title}
                     </option>
                   ))}
                 </select>

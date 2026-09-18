@@ -6,6 +6,7 @@ import {
   addWorkspace,
   removeWorkspace,
 } from "./workspaces";
+import { IconFolder, IconClose } from "./icons";
 
 interface Props {
   activeWorkspace: Workspace;
@@ -57,8 +58,8 @@ export function WorkspaceModal({ activeWorkspace, onSelectWorkspace, onClose }: 
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
           <h3 style={{ fontSize: "16px", fontWeight: 600 }}>管理与切换工作区 (Workspace)</h3>
-          <button type="button" className="apple-icon-btn" onClick={onClose}>
-            ✕
+          <button type="button" className="apple-icon-btn" onClick={onClose} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            <IconClose size={14} />
           </button>
         </div>
         <p style={{ fontSize: "12px", color: "#86868b", marginBottom: "14px" }}>
@@ -77,15 +78,16 @@ export function WorkspaceModal({ activeWorkspace, onSelectWorkspace, onClose }: 
               >
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontWeight: 600, fontSize: "13px", color: "#1d1d1f" }}>
-                      📁 {ws.name}
+                    <span style={{ fontWeight: 600, fontSize: "13px", color: "#1d1d1f", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                      <IconFolder size={14} />
+                      {ws.name}
                     </span>
                     <span className="apple-pill queued" style={{ fontSize: "10px", padding: "1px 5px" }}>
                       分支: {ws.branch}
                     </span>
                     {isCurrent && (
                       <span className="apple-pill running" style={{ fontSize: "10px", padding: "1px 5px" }}>
-                        ✓ 当前生效
+                        当前生效
                       </span>
                     )}
                   </div>
@@ -105,8 +107,9 @@ export function WorkspaceModal({ activeWorkspace, onSelectWorkspace, onClose }: 
                     className="apple-icon-btn"
                     title="移除该工作区记录"
                     onClick={(e) => handleDelete(ws.id, e)}
+                    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                   >
-                    ✕
+                    <IconClose size={12} />
                   </button>
                 )}
               </div>

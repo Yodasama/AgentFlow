@@ -7,6 +7,16 @@ import {
   createMockTask,
   type ScheduleRecord,
 } from "./api";
+import {
+  IconClose,
+  IconUser,
+  IconSchedule,
+  IconFolder,
+  IconCheck,
+  IconAlertTriangle,
+  IconLink,
+  IconTasks,
+} from "./icons";
 
 interface Props {
   onTriggerRun: (runId: string) => void;
@@ -355,8 +365,9 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                           title="删除"
                           disabled={busy}
                           onClick={(e) => void handleDelete(s.id, e)}
+                          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                         >
-                          ✕
+                          <IconClose size={12} />
                         </button>
                       </div>
                     </td>
@@ -395,14 +406,17 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                 className="apple-icon-btn"
                 onClick={() => setShowAddModal(false)}
                 title="关闭"
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
               >
-                ✕
+                <IconClose size={14} />
               </button>
             </div>
 
             {/* Row 1: Assignee (谁负责: 模型 + 推理程度) */}
             <div className="feishu-field-row">
-              <span className="feishu-field-icon">👤</span>
+              <span className="feishu-field-icon" style={{ display: "inline-flex", alignItems: "center" }}>
+                <IconUser size={14} />
+              </span>
               <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", flex: 1 }}>
                 <select
                   className="feishu-select"
@@ -432,7 +446,9 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
 
             {/* Row 2: Date & Repeat (什么时间，是否重复) */}
             <div className="feishu-field-row" style={{ alignItems: "flex-start" }}>
-              <span className="feishu-field-icon" style={{ marginTop: "4px" }}>📅</span>
+              <span className="feishu-field-icon" style={{ marginTop: "4px", display: "inline-flex", alignItems: "center" }}>
+                <IconSchedule size={14} />
+              </span>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
                 <div className="feishu-pills-row">
                   {[
@@ -444,7 +460,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                     <button
                       key={preset}
                       type="button"
-                      className={`feishu-pill-btn ${presetTimeTag === preset && !isCustomTime ? "active" : ""}`}
+                      className={`feishu-pill-chip ${presetTimeTag === preset && !isCustomTime ? "active" : ""}`}
                       onClick={() => {
                         setPresetTimeTag(preset);
                         setIsCustomTime(false);
@@ -456,13 +472,13 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
 
                   <button
                     type="button"
-                    className={`feishu-pill-btn ${isCustomTime ? "active" : ""}`}
+                    className={`feishu-pill-chip ${isCustomTime ? "active" : ""}`}
                     onClick={() => setIsCustomTime(true)}
                   >
-                    其他时间
+                    自定义时间…
                   </button>
 
-                  <label className="feishu-repeat-label">
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", color: "var(--apple-text-secondary)", marginLeft: "4px" }}>
                     <input
                       type="checkbox"
                       checked={isRepeating}
@@ -473,7 +489,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                 </div>
 
                 {isCustomTime && (
-                  <div className="feishu-custom-time-box">
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "4px" }}>
                     <select
                       className="feishu-select"
                       value={customFrequency}
@@ -516,7 +532,9 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
 
             {/* Row 3: List / Scope (添加至任务清单) */}
             <div className="feishu-field-row">
-              <span className="feishu-field-icon">📄</span>
+              <span className="feishu-field-icon" style={{ display: "inline-flex", alignItems: "center" }}>
+                <IconFolder size={14} />
+              </span>
               <span style={{ fontSize: "13px", color: "#1d1d1f" }}>
                 默认工程工作区 (系统自动感知当前代码库与本地环境)
               </span>
@@ -524,7 +542,9 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
 
             {/* Row 4: Description (添加描述) */}
             <div className="feishu-field-row" style={{ alignItems: "flex-start" }}>
-              <span className="feishu-field-icon" style={{ marginTop: "4px" }}>≡</span>
+              <span className="feishu-field-icon" style={{ marginTop: "4px", display: "inline-flex", alignItems: "center" }}>
+                <IconTasks size={14} />
+              </span>
               <textarea
                 className="feishu-desc-input"
                 placeholder="添加任务描述、执行要求或巡检标准…"
@@ -556,8 +576,9 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                       type="button"
                       className="apple-icon-btn"
                       onClick={() => setSubtasks(subtasks.filter((_, i) => i !== idx))}
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                     >
-                      ✕
+                      <IconClose size={12} />
                     </button>
                   </div>
                 ))}
@@ -599,7 +620,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                     if (!showSubtasks && subtasks.length === 0) setSubtasks([""]);
                   }}
                 >
-                  ⑂ 子任务
+                  子任务
                 </button>
 
                 <button
@@ -607,8 +628,10 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                   className={`feishu-tool-btn ${showAttachment ? "active" : ""}`}
                   title="添加附件或路径"
                   onClick={() => setShowAttachment(!showAttachment)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
                 >
-                  📎 附件/路径
+                  <IconLink size={12} />
+                  <span>附件/路径</span>
                 </button>
               </div>
 
@@ -718,8 +741,18 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
                   executionLogs[selectedSchedule.id].map((log, idx) => (
                     <div key={idx} className={`schedule-log-item ${log.status}`}>
                       <div className="log-item-header">
-                        <span className={`apple-pill ${log.status === "succeeded" ? "succeeded" : "failed"}`}>
-                          {log.status === "succeeded" ? "✓ 成功" : "! 失败"}
+                        <span className={`apple-pill ${log.status === "succeeded" ? "succeeded" : "failed"}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          {log.status === "succeeded" ? (
+                            <>
+                              <IconCheck size={11} />
+                              <span>成功</span>
+                            </>
+                          ) : (
+                            <>
+                              <IconAlertTriangle size={11} />
+                              <span>失败</span>
+                            </>
+                          )}
                         </span>
                         <span style={{ fontSize: "11px", color: "#86868b" }}>
                           {log.triggeredAt} · 耗时 {log.durationSeconds}s

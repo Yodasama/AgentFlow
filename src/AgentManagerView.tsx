@@ -1,4 +1,15 @@
 import { useState, useEffect } from "react";
+import {
+  IconCode,
+  IconSearch,
+  IconFlask,
+  IconRuler,
+  IconShield,
+  IconZap,
+  IconCpu,
+  IconBrain,
+  IconCheck,
+} from "./icons";
 
 export interface AgentRoleConfig {
   id: string;
@@ -11,13 +22,22 @@ export interface AgentRoleConfig {
   isBuiltin?: boolean;
 }
 
-export const AGENT_ROLES_STORAGE_KEY = "agentflow_agent_roles_v3";
+export function RoleIcon({ icon, size = 16 }: { icon: string; size?: number }) {
+  if (icon === "code" || icon === "👨‍💻") return <IconCode size={size} />;
+  if (icon === "search" || icon === "🔍") return <IconSearch size={size} />;
+  if (icon === "test" || icon === "🧪") return <IconFlask size={size} />;
+  if (icon === "ruler" || icon === "📐") return <IconRuler size={size} />;
+  if (icon === "shield" || icon === "🛡️") return <IconShield size={size} />;
+  return <IconZap size={size} />;
+}
+
+export const AGENT_ROLES_STORAGE_KEY = "agentflow_agent_roles_v4";
 
 export const defaultAgentRoles: AgentRoleConfig[] = [
   {
     id: "role-dev",
     roleName: "开发编写",
-    icon: "👨‍💻",
+    icon: "code",
     description: "专注代码编写、重构与 Checkpoint 提交，遵循语言最佳实践。",
     defaultModel: "Claude 3.5 Sonnet",
     defaultReasoning: "深度",
@@ -30,7 +50,7 @@ export const defaultAgentRoles: AgentRoleConfig[] = [
   {
     id: "role-review",
     roleName: "代码审查",
-    icon: "🔍",
+    icon: "search",
     description: "专注代码静态检查、安全性审计与边界隐患审查，提出阻断级和警告级意见。",
     defaultModel: "Claude 3.5 Sonnet",
     defaultReasoning: "极致思维",
@@ -43,7 +63,7 @@ export const defaultAgentRoles: AgentRoleConfig[] = [
   {
     id: "role-test",
     roleName: "测试验证",
-    icon: "🧪",
+    icon: "test",
     description: "负责单元测试、集成测试驱动以及回归验证，捕获代码异常并生成测试报告。",
     defaultModel: "自动化环境 (Test Runner)",
     defaultReasoning: "标准",
@@ -55,7 +75,7 @@ export const defaultAgentRoles: AgentRoleConfig[] = [
   {
     id: "role-arch",
     roleName: "需求拆解",
-    icon: "📐",
+    icon: "ruler",
     description: "分析复合型大需求，产出清晰的模块切分、领域模型与依赖关系。",
     defaultModel: "GPT-4o",
     defaultReasoning: "深度",
@@ -67,7 +87,7 @@ export const defaultAgentRoles: AgentRoleConfig[] = [
   {
     id: "role-approval",
     roleName: "人工决策",
-    icon: "🛡️",
+    icon: "shield",
     description: "质量准入把关，校验 Checkpoint Diff 与回归证据，准予合并交付。",
     defaultModel: "人工确认 (Human In Loop)",
     defaultReasoning: "最高",
@@ -93,7 +113,7 @@ export function AgentManagerView() {
 
   // New Role Form State
   const [newRoleName, setNewRoleName] = useState("");
-  const [newIcon, setNewIcon] = useState("⚡️");
+  const [newIcon, setNewIcon] = useState("zap");
   const [newDesc, setNewDesc] = useState("");
   const [newModel, setNewModel] = useState("Claude 3.5 Sonnet");
   const [newReasoning, setNewReasoning] = useState("深度");
@@ -128,10 +148,10 @@ export function AgentManagerView() {
     e.preventDefault();
     if (!newRoleName.trim()) return;
     const newRoleItem: AgentRoleConfig = {
-      id: `custom-role-${Date.now()}`,
+      id: `role-${Date.now()}`,
       roleName: newRoleName.trim(),
-      icon: newIcon.trim() || "🤖",
-      description: newDesc.trim() || "自定义业务角色。",
+      icon: newIcon.trim() || "zap",
+      description: newDesc.trim() || "通用功能角色",
       defaultModel: newModel,
       defaultReasoning: newReasoning,
       systemPrompt:
@@ -167,8 +187,9 @@ export function AgentManagerView() {
         </div>
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           {saveSuccess && (
-            <span className="agent-saved-pill" style={{ fontSize: "10px", padding: "2px 8px" }}>
-              ✓ 已自动保存
+            <span className="agent-saved-pill" style={{ fontSize: "10px", padding: "2px 8px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              <IconCheck size={11} />
+              <span>已自动保存</span>
             </span>
           )}
           <button
@@ -208,7 +229,9 @@ export function AgentManagerView() {
                   onClick={() => setSelectedRoleId(role.id)}
                 >
                   <div className="roster-card-top" style={{ gap: "8px" }}>
-                    <span style={{ fontSize: "18px" }}>{role.icon}</span>
+                    <span style={{ display: "inline-flex", alignItems: "center" }}>
+                      <RoleIcon icon={role.icon} size={16} />
+                    </span>
                     <div className="roster-info" style={{ flex: 1 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <strong style={{ fontSize: "13px" }}>{role.roleName}</strong>
@@ -217,11 +240,13 @@ export function AgentManagerView() {
                         </span>
                       </div>
                       <div style={{ display: "flex", gap: "4px", marginTop: "3px" }}>
-                        <span className="meta-chip" style={{ fontSize: "9px", padding: "1px 5px" }}>
-                          🤖 {role.defaultModel.split(" ")[0]}
+                        <span className="meta-chip" style={{ fontSize: "9px", padding: "1px 5px", display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                          <IconCpu size={10} />
+                          <span>{role.defaultModel.split(" ")[0]}</span>
                         </span>
-                        <span className="meta-chip" style={{ fontSize: "9px", padding: "1px 5px" }}>
-                          🧠 {role.defaultReasoning}
+                        <span className="meta-chip" style={{ fontSize: "9px", padding: "1px 5px", display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                          <IconBrain size={10} />
+                          <span>{role.defaultReasoning}</span>
                         </span>
                       </div>
                     </div>
@@ -238,7 +263,9 @@ export function AgentManagerView() {
             {/* Header: Icon + Name + Desc + Delete */}
             <div className="inspector-header-row" style={{ paddingBottom: "12px", borderBottom: "1px solid #f0f0f2" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1 }}>
-                <span style={{ fontSize: "28px" }}>{selected.icon}</span>
+                <span style={{ display: "inline-flex", alignItems: "center" }}>
+                  <RoleIcon icon={selected.icon} size={22} />
+                </span>
                 <div style={{ flex: 1 }}>
                   <input
                     className="agent-title-input"
@@ -346,8 +373,9 @@ export function AgentManagerView() {
                 <span style={{ fontSize: "12px", color: "#86868b" }}>
                   提示：可在任务内随时针对具体执行目标进行微调。
                 </span>
-                <span style={{ fontSize: "12px", color: "#24a159" }}>
-                  ✓ 修改已自动同步
+                <span style={{ fontSize: "12px", color: "#346538", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <IconCheck size={12} />
+                  <span>修改已自动同步</span>
                 </span>
               </div>
             </div>
@@ -365,14 +393,20 @@ export function AgentManagerView() {
             </p>
 
             <form onSubmit={handleAddRole} className="modal-body-form" style={{ marginTop: "10px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "50px 1fr", gap: "8px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "8px" }}>
                 <label>
-                  图标
-                  <input
+                  图标类型
+                  <select
                     value={newIcon}
                     onChange={(e) => setNewIcon(e.target.value)}
-                    style={{ textAlign: "center" }}
-                  />
+                  >
+                    <option value="code">代码 (Code)</option>
+                    <option value="search">审查 (Search)</option>
+                    <option value="test">测试 (Test)</option>
+                    <option value="ruler">架构 (Ruler)</option>
+                    <option value="shield">安全 (Shield)</option>
+                    <option value="zap">通用 (Zap)</option>
+                  </select>
                 </label>
                 <label>
                   角色名称

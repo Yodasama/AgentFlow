@@ -30,6 +30,18 @@ import {
 } from "./api";
 import { loadAgentRoles, type AgentRoleConfig } from "./AgentManagerView";
 import { getTaskProjectLinks } from "./TasksListView";
+import {
+  IconCpu,
+  IconFolder,
+  IconZap,
+  IconGitBranch,
+  IconChevronRight,
+  IconCheck,
+  IconSparkles,
+  IconTag,
+  IconUser,
+  IconAlertTriangle,
+} from "./icons";
 
 const stateLabels: Record<RunState, string> = {
   queued: "排队中",
@@ -137,7 +149,10 @@ function MindMapNode({ data, selected }: NodeProps) {
           paddingTop: "6px",
         }}
       >
-        <span>🤖 {nodeData.model}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+          <IconCpu size={11} />
+          <span>{nodeData.model}</span>
+        </span>
         <span style={{ fontSize: "10px", color: color.text }}>
           {nodeData.status === "running"
             ? "运行中"
@@ -616,12 +631,14 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
         <div className="task-title-group">
           <div className="task-breadcrumb">
             {linkedProject ? (
-              <span className="breadcrumb-project" title={`所属立项：${linkedProject.planTitle}`}>
-                📁 {linkedProject.planTitle}
+              <span className="breadcrumb-project" title={`所属立项：${linkedProject.planTitle}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <IconFolder size={11} />
+                <span>{linkedProject.planTitle}</span>
               </span>
             ) : (
-              <span className="breadcrumb-light">
-                ⚡️ 独立轻任务
+              <span className="breadcrumb-light" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <IconZap size={11} />
+                <span>独立轻任务</span>
               </span>
             )}
             <span className="breadcrumb-sep">›</span>
@@ -639,59 +656,58 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
               disabled={busy}
               onClick={() => void handleCancelRun()}
             >
-              取消执行
+              终止执行
             </button>
           )}
-          {["succeeded", "failed", "cancelled", "interrupted"].includes(detail.runState) && (
-            <button
-              className="apple-btn-primary"
-              type="button"
-              disabled={busy}
-              onClick={() => void handleRerun()}
-            >
-              重新执行
-            </button>
-          )}
+          <button
+            className="apple-btn-primary"
+            type="button"
+            disabled={busy}
+            onClick={() => void handleRerun()}
+          >
+            重新运行
+          </button>
         </div>
       </div>
 
       {error && <div className="apple-alert-box error">{error}</div>}
 
-      {/* Upper Half: Mind Map Style White Canvas */}
-      <section className="canvas-section">
-        <div className="canvas-toolbar">
-          <div className="toolbar-info">
-            <span className="section-title">任务工作流脑图 (Mind Map)</span>
+      {/* Upper Half: MindMap Flow Canvas */}
+      <section className="mindmap-canvas-section">
+        <div className="canvas-header-bar">
+          <div className="canvas-title-wrap">
+            <span className="section-title">任务架构与执行流</span>
             <small className="section-sub">
-              点击节点可选中查看，支持拖拽节点或添加新的功能节点
+              可视化当前执行链路。每个节点展示模型引擎、推理深度与担任的功能角色
             </small>
           </div>
           <button
-            className="apple-btn-secondary"
+            className="apple-btn-secondary add-node-btn"
             type="button"
-            onClick={handleOpenAddNodeModal}
+            onClick={() => setShowAddNodeModal(true)}
           >
-            + 添加节点
+            + 补充节点
           </button>
         </div>
 
-        <div className="mindmap-canvas-wrapper">
+        <div className="mindmap-reactflow-wrapper">
           <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             nodeTypes={nodeTypes}
-            onNodeClick={(_, node) => setSelectedNodeId(node.id)}
             fitView
+            proOptions={{ hideAttribution: true }}
+            nodesDraggable
           >
-            <Background color="#f0f0f2" gap={20} size={1} />
+            <Background color="#eaeaea" gap={24} size={1} />
             <Controls showInteractive={false} />
           </ReactFlow>
         </div>
       </section>
 
-      {/* Visual Git Branch & Checkpoint Evolution Tree */}
+      {/* Middle: Git Branch & Commit DAG Tree View */}
       <section className="git-tree-section">
         <div className="git-tree-header">
           <div className="tree-header-info">
@@ -701,9 +717,17 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
             </small>
           </div>
           <div className="branch-pills-row">
-            <span className="branch-tag main">🌿 main (基准)</span>
-            <span className="branch-arrow">➔</span>
-            <span className="branch-tag worktree">🌿 {branchName} (隔离开发)</span>
+            <span className="branch-tag main" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              <IconGitBranch size={12} />
+              <span>main (基准)</span>
+            </span>
+            <span className="branch-arrow" style={{ display: "inline-flex", alignItems: "center" }}>
+              <IconChevronRight size={12} />
+            </span>
+            <span className="branch-tag worktree" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+              <IconGitBranch size={12} />
+              <span>{branchName} (隔离开发)</span>
+            </span>
           </div>
         </div>
 
@@ -726,11 +750,11 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
                   {idx > 0 && <div className="tree-connector-line" />}
 
                   {/* Node Circle */}
-                  <div className={`tree-node-circle ${c.status}`}>
-                    {c.status === "base" && "●"}
-                    {c.status === "dev" && "✓"}
-                    {c.status === "candidate" && "★"}
-                    {c.status === "merged" && "✦"}
+                  <div className={`tree-node-circle ${c.status}`} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    {c.status === "base" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />}
+                    {c.status === "dev" && <IconCheck size={10} />}
+                    {c.status === "candidate" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />}
+                    {c.status === "merged" && <IconSparkles size={10} />}
                   </div>
 
                   {/* Node Text Info */}
@@ -743,15 +767,21 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
                   {isHovered && (
                     <div className="tree-hover-popover">
                       <div className="popover-header">
-                        <span className="popover-sha">🔖 {c.sha}</span>
+                        <span className="popover-sha" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          <IconTag size={11} />
+                          <span>{c.sha}</span>
+                        </span>
                         <span className={`apple-pill ${c.status === "merged" ? "succeeded" : "running"}`}>
                           {c.branch}
                         </span>
                       </div>
                       <div className="popover-message">{c.message}</div>
                       <div className="popover-meta">
-                        <span>👤 提交人：{c.author}</span>
-                        <span>⏱ 时间：{c.timestamp}</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          <IconUser size={11} />
+                          <span>提交人：{c.author}</span>
+                        </span>
+                        <span>时间：{c.timestamp}</span>
                       </div>
                       <div className="popover-files">
                         <strong>受控文件：</strong>
@@ -776,7 +806,7 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
         <div className="section-title-bar">
           <h2>当前执行状态</h2>
           <small>
-            Attempt #{detail.attemptNumber ?? "—"} ·{" "}
+            Attempt #{detail.attemptNumber ?? "-"} ·{" "}
             {snapshot ? `第 ${snapshot.flow.iteration} 轮迭代 · 已用 ${snapshot.flow.actionsUsed} 步` : "独立单步"}
           </small>
         </div>
@@ -785,7 +815,10 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
           {/* 1. 已完成什么 */}
           <div className="status-card">
             <div className="card-header">
-              <span className="card-badge green">✓ 已完成内容</span>
+              <span className="card-badge green" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <IconCheck size={11} />
+                <span>已完成内容</span>
+              </span>
             </div>
             <ul className="status-list">
               <li>
@@ -857,8 +890,15 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
           {/* 3. 阻塞时，哪里有问题 */}
           <div className={`status-card ${hasBlockers ? "alert" : ""}`}>
             <div className="card-header">
-              <span className={`card-badge ${hasBlockers ? "red" : "gray"}`}>
-                {hasBlockers ? "⚠ 阻塞与异常诊断" : "● 无阻塞"}
+              <span className={`card-badge ${hasBlockers ? "red" : "gray"}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                {hasBlockers ? (
+                  <>
+                    <IconAlertTriangle size={12} />
+                    <span>阻塞与异常诊断</span>
+                  </>
+                ) : (
+                  <span>无阻塞</span>
+                )}
               </span>
             </div>
             <div className="status-content">

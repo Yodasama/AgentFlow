@@ -185,8 +185,8 @@ export async function detectLocalEndpoints(): Promise<{
         detected: ollamaOnline,
         models: ollamaModels.length > 0 ? ollamaModels : p.models,
         statusMessage: ollamaOnline
-          ? `🟢 已自动检测到在线 (模型数: ${ollamaModels.length || 3})`
-          : "⚪️ 未检测到运行进程 (可启动 ollama serve)",
+          ? `已自动检测到在线 (模型数: ${ollamaModels.length || 3})`
+          : "未检测到运行进程 (可启动 ollama serve)",
       };
     }
     if (p.type === "local_lmstudio") {
@@ -195,8 +195,8 @@ export async function detectLocalEndpoints(): Promise<{
         ...p,
         detected: lmStudioOnline,
         statusMessage: lmStudioOnline
-          ? "🟢 已自动检测到在线 (端口 1234)"
-          : "⚪️ 未检测到运行进程 (可在 LM Studio 开启本地服务)",
+          ? "已自动检测到在线 (端口 1234)"
+          : "未检测到运行进程 (可在 LM Studio 开启本地服务)",
       };
     }
     return p;

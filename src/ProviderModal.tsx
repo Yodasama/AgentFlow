@@ -6,6 +6,14 @@ import {
   setActiveProviderId,
   detectLocalEndpoints,
 } from "./agentAdapter";
+import {
+  IconZap,
+  IconClose,
+  IconSearch,
+  IconLaptop,
+  IconCloud,
+  IconCheck,
+} from "./icons";
 
 interface Props {
   activeProvider: AgentProviderConfig;
@@ -31,7 +39,7 @@ export function ProviderModal({ activeProvider, onSelectProvider, onClose }: Pro
       const updated = getStoredProviders();
       setProviders(updated);
       const onlineCount = (res.ollamaOnline ? 1 : 0) + (res.lmStudioOnline ? 1 : 0);
-      setDetectSummary(`检测完成：发现 ${onlineCount} 个本地端点在线（Ollama: ${res.ollamaOnline ? "✓" : "✕"}，LM Studio: ${res.lmStudioOnline ? "✓" : "✕"}）`);
+      setDetectSummary(`检测完成：发现 ${onlineCount} 个本地端点在线（Ollama: ${res.ollamaOnline ? "在线" : "离线"}，LM Studio: ${res.lmStudioOnline ? "在线" : "离线"}）`);
     } catch {
       setDetectSummary("本地端点检测超时或未运行。");
     } finally {
@@ -82,11 +90,13 @@ export function ProviderModal({ activeProvider, onSelectProvider, onClose }: Pro
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "18px" }}>⚡️</span>
+            <span style={{ display: "inline-flex", alignItems: "center" }}>
+              <IconZap size={16} />
+            </span>
             <h3 style={{ fontSize: "16px", fontWeight: 600 }}>Agent 接入源与适配器管理</h3>
           </div>
-          <button type="button" className="apple-icon-btn" onClick={onClose}>
-            ✕
+          <button type="button" className="apple-icon-btn" onClick={onClose} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            <IconClose size={14} />
           </button>
         </div>
 
@@ -103,11 +113,12 @@ export function ProviderModal({ activeProvider, onSelectProvider, onClose }: Pro
           <button
             type="button"
             className="apple-btn-secondary"
-            style={{ fontSize: "11px", padding: "4px 10px" }}
+            style={{ fontSize: "11px", padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: "5px" }}
             disabled={detecting}
             onClick={handleRunDetect}
           >
-            {detecting ? "探查中…" : "🔍 一键自动检测"}
+            <IconSearch size={12} />
+            <span>{detecting ? "探查中…" : "一键自动检测"}</span>
           </button>
         </div>
 
@@ -132,15 +143,17 @@ export function ProviderModal({ activeProvider, onSelectProvider, onClose }: Pro
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "14px" }}>{p.isLocal ? "💻" : "☁️"}</span>
+                    <span style={{ display: "inline-flex", alignItems: "center" }}>
+                      {p.isLocal ? <IconLaptop size={14} /> : <IconCloud size={14} />}
+                    </span>
                     <strong style={{ fontSize: "13px", color: "#1d1d1f" }}>{p.name}</strong>
                     {p.isLocal ? (
-                      <span className={`apple-pill ${p.detected ? "running" : "queued"}`} style={{ fontSize: "10px" }}>
-                        {p.detected ? "🟢 在线" : "⚪️ 离线"}
+                      <span className={`apple-pill ${p.detected ? "succeeded" : "queued"}`} style={{ fontSize: "10px" }}>
+                        {p.detected ? "在线" : "离线"}
                       </span>
                     ) : (
                       <span className="apple-pill succeeded" style={{ fontSize: "10px" }}>
-                        {p.apiKey ? "✓ 已配 Key" : "未设 Key"}
+                        {p.apiKey ? "已配置密钥" : "未设密钥"}
                       </span>
                     )}
                     {isCurrent && (

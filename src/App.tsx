@@ -12,6 +12,16 @@ import { ChatView } from "./ChatView";
 import { type Workspace, getActiveWorkspace } from "./workspaces";
 import { WorkspaceModal } from "./WorkspaceModal";
 
+import {
+  IconChat,
+  IconTasks,
+  IconPlanning,
+  IconSchedule,
+  IconAgent,
+  IconFolder,
+  IconChevronDown,
+} from "./icons";
+
 const navigation = ["对话", "任务", "项目规划", "定时任务"];
 
 export function App() {
@@ -87,11 +97,15 @@ export function App() {
             onClick={() => setShowGlobalWsModal(true)}
             title="点击管理与切换工作区目录"
           >
-            <span className="ws-dot">●</span>
+            <span className="ws-dot">
+              <IconFolder size={13} />
+            </span>
             <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>
               {currentWorkspace.name}
             </span>
-            <span className="ws-chevron">▾</span>
+            <span className="ws-chevron" style={{ display: "inline-flex", alignItems: "center" }}>
+              <IconChevronDown size={12} />
+            </span>
           </button>
         </div>
 
@@ -104,10 +118,10 @@ export function App() {
               type="button"
               onClick={() => handleTabClick(item)}
             >
-              {item === "对话" && <span className="nav-icon">💬</span>}
-              {item === "任务" && <span className="nav-icon">📋</span>}
-              {item === "项目规划" && <span className="nav-icon">🧭</span>}
-              {item === "定时任务" && <span className="nav-icon">⏰</span>}
+              {item === "对话" && <span className="nav-icon"><IconChat size={16} /></span>}
+              {item === "任务" && <span className="nav-icon"><IconTasks size={16} /></span>}
+              {item === "项目规划" && <span className="nav-icon"><IconPlanning size={16} /></span>}
+              {item === "定时任务" && <span className="nav-icon"><IconSchedule size={16} /></span>}
               <span>{item}</span>
             </button>
           ))}
@@ -120,7 +134,7 @@ export function App() {
             type="button"
             onClick={() => handleTabClick("Agent")}
           >
-            <span className="nav-icon">🤖</span>
+            <span className="nav-icon"><IconAgent size={16} /></span>
             <span>Agent 角色管理</span>
           </button>
         </div>

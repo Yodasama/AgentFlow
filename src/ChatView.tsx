@@ -15,6 +15,23 @@ import {
   detectLocalEndpoints,
 } from "./agentAdapter";
 import { ProviderModal } from "./ProviderModal";
+import {
+  IconSparkles,
+  IconFolder,
+  IconTasks,
+  IconPlanning,
+  IconSchedule,
+  IconZap,
+  IconFlame,
+  IconSettings,
+  IconLaptop,
+  IconCloud,
+  IconCpu,
+  IconBrain,
+  IconChevronDown,
+  IconSend,
+  IconPlus,
+} from "./icons";
 
 interface Props {
   onNavigateToRun: (runId: string) => void;
@@ -402,7 +419,9 @@ export function ChatView({
       {/* Top Header Bar */}
       <div className="gpt-header-bar">
         <div className="gpt-header-left">
-          <span className="gpt-logo-icon">✦</span>
+          <span className="gpt-logo-icon" style={{ display: "inline-flex", alignItems: "center" }}>
+            <IconSparkles size={15} />
+          </span>
           <span className="gpt-header-title">AgentFlow 智能中枢</span>
         </div>
 
@@ -414,10 +433,14 @@ export function ChatView({
             onClick={() => setShowProviderModal(true)}
             title="管理本地与云端模型接入源"
           >
-            <span>{activeProvider.isLocal ? "💻" : "☁️"}</span>
+            <span style={{ display: "inline-flex", alignItems: "center" }}>
+              {activeProvider.isLocal ? <IconLaptop size={13} /> : <IconCloud size={13} />}
+            </span>
             <span className="ws-label">接入源:</span>
             <strong className="ws-name">{activeProvider.name.split(" ")[0]}</strong>
-            <span className="ws-chevron">⚙️</span>
+            <span className="ws-chevron" style={{ display: "inline-flex", alignItems: "center" }}>
+              <IconSettings size={12} />
+            </span>
           </button>
 
           {/* Workspace Pill Button */}
@@ -427,10 +450,14 @@ export function ChatView({
             onClick={() => setShowWorkspaceModal(true)}
             title="点击切换或添加工程工作区"
           >
-            <span className="ws-dot">●</span>
+            <span className="ws-dot" style={{ display: "inline-flex", alignItems: "center" }}>
+              <IconFolder size={13} />
+            </span>
             <span className="ws-label">工作区:</span>
             <strong className="ws-name">{activeWorkspace.name}</strong>
-            <span className="ws-chevron">▾</span>
+            <span className="ws-chevron" style={{ display: "inline-flex", alignItems: "center" }}>
+              <IconChevronDown size={12} />
+            </span>
           </button>
         </div>
       </div>
@@ -447,7 +474,9 @@ export function ChatView({
           {messages.length === 0 ? (
             /* Elegant Empty State */
             <div className="gpt-empty-hero">
-              <div className="gpt-hero-icon">✦</div>
+              <div className="gpt-hero-icon" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <IconSparkles size={24} />
+              </div>
               <h2 className="gpt-hero-title">今天想推演或构建什么？</h2>
               <p className="gpt-hero-desc">
                 当前工作区：<strong>{activeWorkspace.name}</strong> · 接入源：<strong>{activeProvider.name}</strong>
@@ -463,7 +492,10 @@ export function ChatView({
                     )
                   }
                 >
-                  <div className="card-tag">🔥 Grill-Me 需求推演</div>
+                  <div className="card-tag">
+                    <IconFlame size={12} />
+                    <span>Grill-Me 需求推演</span>
+                  </div>
                   <div className="card-text">探讨离线同步架构与版本冲突解决策略</div>
                 </div>
 
@@ -471,7 +503,10 @@ export function ChatView({
                   className="gpt-prompt-card"
                   onClick={() => handleSendMessage("微服务多租户数据库隔离与 WAL 模式重构规划")}
                 >
-                  <div className="card-tag">🧭 复杂工程立项</div>
+                  <div className="card-tag">
+                    <IconPlanning size={12} />
+                    <span>复杂工程立项</span>
+                  </div>
                   <div className="card-text">微服务多租户数据库隔离与 WAL 模式方案</div>
                 </div>
 
@@ -479,7 +514,10 @@ export function ChatView({
                   className="gpt-prompt-card"
                   onClick={() => handleSendMessage("为当前项目编写自动化回归测试套件")}
                 >
-                  <div className="card-tag">⚡️ 快速派发任务</div>
+                  <div className="card-tag">
+                    <IconZap size={12} />
+                    <span>快速派发任务</span>
+                  </div>
                   <div className="card-text">在当前工作区编写自动化回归与单测套件</div>
                 </div>
 
@@ -487,7 +525,10 @@ export function ChatView({
                   className="gpt-prompt-card"
                   onClick={() => handleSendMessage("每天 02:00 自动拉取主干执行全量回归与测试")}
                 >
-                  <div className="card-tag">⏰ 创建定时自动化</div>
+                  <div className="card-tag">
+                    <IconSchedule size={12} />
+                    <span>创建定时自动化</span>
+                  </div>
                   <div className="card-text">每天凌晨 02:00 自动拉取主干执行代码巡检</div>
                 </div>
               </div>
@@ -498,7 +539,9 @@ export function ChatView({
               {messages.map((m) => (
                 <div key={m.id} className={`gpt-message-turn ${m.sender}`}>
                   {m.sender === "assistant" && (
-                    <div className="gpt-assistant-avatar">✦</div>
+                    <div className="gpt-assistant-avatar" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                      <IconSparkles size={14} />
+                    </div>
                   )}
 
                   <div className="gpt-message-body">
@@ -510,7 +553,9 @@ export function ChatView({
                     {m.grillMe && (
                       <div className="gpt-grillme-card">
                         <div className="grillme-header-row">
-                          <span className="grillme-flame">🔥</span>
+                          <span className="grillme-flame" style={{ display: "inline-flex", alignItems: "center" }}>
+                            <IconFlame size={14} />
+                          </span>
                           <span className="grillme-title">Grill-Me 架构深度推演与边界确认</span>
                         </div>
 
@@ -540,10 +585,14 @@ export function ChatView({
                         <div className="card-artifact-top">
                           <div style={{ flex: 1 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                              <strong style={{ fontSize: "14px", color: "#0d0d0d" }}>
-                                📋 {m.plan.title}
+                              <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                <IconPlanning size={15} />
+                                {m.plan.title}
                               </strong>
-                              <span className="gpt-ws-tag">📁 {m.plan.workspaceName}</span>
+                              <span className="gpt-ws-tag" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                <IconFolder size={11} />
+                                {m.plan.workspaceName}
+                              </span>
                             </div>
                             <p style={{ fontSize: "12px", color: "#6e6e73", margin: "4px 0 0" }}>
                               {m.plan.summary}
@@ -555,8 +604,10 @@ export function ChatView({
                             className="gpt-btn-primary"
                             disabled={busy}
                             onClick={() => void handleSaveToPlanning(m.plan!)}
+                            style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
                           >
-                            📥 沉淀为立项规划
+                            <IconPlus size={12} />
+                            <span>沉淀为立项规划</span>
                           </button>
                         </div>
 
@@ -564,8 +615,8 @@ export function ChatView({
                           {m.plan.phases.map((ph, pIdx) => (
                             <div key={pIdx} className="card-phase-row">
                               <div style={{ flex: 1, paddingRight: "10px" }}>
-                                <div style={{ fontWeight: 600, fontSize: "13px", color: "#0d0d0d" }}>
-                                  第 {pIdx + 1} 阶段：{ph.title}
+                                <div style={{ fontWeight: 600, fontSize: "13px", color: "#111111" }}>
+                                  阶段 {pIdx + 1}：{ph.title}
                                 </div>
                                 <div style={{ fontSize: "12px", color: "#6e6e73", marginTop: "2px" }}>
                                   {ph.desc}
@@ -577,8 +628,10 @@ export function ChatView({
                                 className="gpt-btn-secondary"
                                 disabled={busy}
                                 onClick={() => void handleDispatchPhase(m.plan!.title, ph.title, ph.desc)}
+                                style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
                               >
-                                ⚡️ 派发此任务
+                                <IconZap size={12} />
+                                <span>派发此任务</span>
                               </button>
                             </div>
                           ))}
@@ -591,11 +644,13 @@ export function ChatView({
                       <div className="gpt-card-artifact">
                         <div className="card-artifact-top">
                           <div>
-                            <strong style={{ fontSize: "14px", color: "#0d0d0d" }}>
-                              ⏰ 定时自动化规则
+                            <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                              <IconSchedule size={15} />
+                              定时自动化规则
                             </strong>
-                            <span className="gpt-ws-tag" style={{ marginLeft: "8px" }}>
-                              📁 {m.schedule.workspaceName}
+                            <span className="gpt-ws-tag" style={{ marginLeft: "8px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                              <IconFolder size={11} />
+                              {m.schedule.workspaceName}
                             </span>
                           </div>
 
@@ -604,8 +659,10 @@ export function ChatView({
                             className="gpt-btn-primary"
                             disabled={busy}
                             onClick={() => void handleCreateScheduleFromChat(m.schedule!)}
+                            style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
                           >
-                            + 建立定时规则
+                            <IconPlus size={12} />
+                            <span>建立定时规则</span>
                           </button>
                         </div>
 
@@ -616,7 +673,7 @@ export function ChatView({
                           </div>
                           <div>
                             <span style={{ color: "#86868b" }}>频次：</span>
-                            <strong style={{ color: "#0071e3" }}>{m.schedule.timeStr}</strong>
+                            <strong style={{ color: "#111111" }}>{m.schedule.timeStr}</strong>
                           </div>
                           <div>
                             <span style={{ color: "#86868b" }}>负责模型：</span>
@@ -635,7 +692,9 @@ export function ChatView({
 
               {busy && (
                 <div className="gpt-message-turn assistant">
-                  <div className="gpt-assistant-avatar">✦</div>
+                  <div className="gpt-assistant-avatar" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <IconSparkles size={14} />
+                  </div>
                   <div className="gpt-message-body">
                     <div className="gpt-thinking-shimmer">
                       <span>AgentFlow 正在深度思考…</span>
@@ -662,9 +721,13 @@ export function ChatView({
               onClick={() => setShowWorkspaceModal(true)}
               title="切换工作区目录"
             >
-              <span>📁</span>
+              <span style={{ display: "inline-flex", alignItems: "center" }}>
+                <IconFolder size={13} />
+              </span>
               <span style={{ fontWeight: 500 }}>{activeWorkspace.name}</span>
-              <span className="pill-arrow">▾</span>
+              <span className="pill-arrow" style={{ display: "inline-flex", alignItems: "center" }}>
+                <IconChevronDown size={10} />
+              </span>
             </button>
 
             {/* Provider Pill */}
@@ -674,14 +737,20 @@ export function ChatView({
               onClick={() => setShowProviderModal(true)}
               title="配置模型接入源 (本地检测 / 云端 API)"
             >
-              <span>{activeProvider.isLocal ? (activeProvider.detected ? "🟢" : "💻") : "☁️"}</span>
+              <span style={{ display: "inline-flex", alignItems: "center" }}>
+                {activeProvider.isLocal ? <IconLaptop size={13} /> : <IconCloud size={13} />}
+              </span>
               <span>{activeProvider.name.split(" ")[0]}</span>
-              <span className="pill-arrow">⚙️</span>
+              <span className="pill-arrow" style={{ display: "inline-flex", alignItems: "center" }}>
+                <IconSettings size={11} />
+              </span>
             </button>
 
             {/* Model Pill */}
             <div className="gpt-meta-select-wrapper">
-              <span className="select-icon">🤖</span>
+              <span className="select-icon" style={{ display: "inline-flex", alignItems: "center" }}>
+                <IconCpu size={13} />
+              </span>
               <select
                 className="gpt-meta-select-clean"
                 value={selectedModel}
@@ -697,7 +766,9 @@ export function ChatView({
 
             {/* Reasoning Level Pill */}
             <div className="gpt-meta-select-wrapper">
-              <span className="select-icon">🧠</span>
+              <span className="select-icon" style={{ display: "inline-flex", alignItems: "center" }}>
+                <IconBrain size={13} />
+              </span>
               <select
                 className="gpt-meta-select-clean"
                 value={selectedReasoning}
@@ -742,8 +813,9 @@ export function ChatView({
               className={`gpt-send-circle-btn ${inputText.trim() && !busy ? "active" : ""}`}
               disabled={busy || !inputText.trim()}
               title="发送 (Enter)"
+              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
             >
-              ↑
+              <IconSend size={14} />
             </button>
           </form>
         </div>

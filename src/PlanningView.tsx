@@ -7,6 +7,14 @@ import {
   createMockDevelopmentTask,
   type GoalRecord,
 } from "./api";
+import {
+  IconChat,
+  IconClose,
+  IconLink,
+  IconZap,
+  IconCheck,
+  IconFlame,
+} from "./icons";
 
 interface Props {
   onNavigateToRun: (runId: string) => void;
@@ -245,7 +253,7 @@ export function PlanningView({
               onClick={() => onNavigateToTab("对话")}
               style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
             >
-              <span>💬</span>
+              <IconChat size={14} />
               <span>进入智能对话中枢</span>
             </button>
           )}
@@ -338,7 +346,7 @@ export function PlanningView({
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }} onClick={(e) => e.stopPropagation()}>
                     <span style={{ fontSize: "11px", color: "#86868b" }}>
                       交付期：{p.deadline}
                     </span>
@@ -348,8 +356,9 @@ export function PlanningView({
                       title="移除规划"
                       disabled={busy}
                       onClick={() => void handleDeletePlan(p.id)}
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                     >
-                      ✕
+                      <IconClose size={13} />
                     </button>
                   </div>
                 </div>
@@ -401,7 +410,8 @@ export function PlanningView({
                                   </span>
                                   {dispatchedRunId && (
                                     <span className="dispatched-tag">
-                                      🔗 已派发执行：
+                                      <IconLink size={12} />
+                                      <span>已派发执行：</span>
                                       <button
                                         type="button"
                                         className="link-btn"
@@ -429,8 +439,10 @@ export function PlanningView({
                                         m.id
                                       )
                                     }
+                                    style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
                                   >
-                                    ⚡️ 派发为任务
+                                    <IconZap size={12} />
+                                    <span>派发为任务</span>
                                   </button>
                                 )}
                                 {dispatchedRunId && (
@@ -443,7 +455,10 @@ export function PlanningView({
                                   </button>
                                 )}
                                 {m.completed && (
-                                  <span className="completed-badge">✓ 已达标</span>
+                                  <span className="completed-badge" style={{ display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                                    <IconCheck size={11} />
+                                    <span>已达标</span>
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -514,11 +529,12 @@ export function PlanningView({
                   <button
                     className="apple-btn-primary"
                     type="button"
-                    style={{ background: "linear-gradient(135deg, #ff9500 0%, #ff2d55 100%)", border: 0 }}
                     disabled={!newTitle.trim()}
                     onClick={handleLaunchGrillMe}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    🔥 Grill-Me 探讨细节并设计方案
+                    <IconFlame size={14} />
+                    <span>Grill-Me 探讨细节并设计方案</span>
                   </button>
                 </div>
               </div>

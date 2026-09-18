@@ -242,7 +242,7 @@ export function RunsView({ runs, selectedRunId, onSelectRun, onApproval, busy, o
                         <div key={cp.checkpointId} className="checkpoint-container">
                           <div className="checkpoint-card">
                             <div>
-                              <strong>Commit: <code>{cp.commitSha?.slice(0, 10) ?? "—"}</code></strong>
+                              <strong>Commit: <code>{cp.commitSha?.slice(0, 10) ?? "-"}</code></strong>
                               <span className="marker-tag">{cp.marker}</span>
                               {cp.noChanges && <span className="marker-tag" style={{ color: "#f59e0b" }}>无代码变更</span>}
                             </div>
