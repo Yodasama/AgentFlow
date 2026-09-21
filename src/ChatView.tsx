@@ -43,6 +43,7 @@ import { DrawerSelect, type DrawerSelectOption } from "./DrawerSelect";
 import { CodexModelPopover } from "./CodexModelPopover";
 import { TokenUsageModal } from "./TokenUsageModal";
 import { loadAgentRoles, type AgentRoleConfig, RoleIcon } from "./AgentManagerView";
+import { marked } from "marked";
 import {
   IconSparkles,
   IconChat,
@@ -71,7 +72,33 @@ import {
   IconSearch,
   IconClose,
   IconCheck,
+  IconCopy,
+  IconEdit,
+  IconArrowDown,
 } from "./icons";
+
+// Configure marked for safe and clean GFM rendering
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+});
+
+function MarkdownView({ content }: { content: string }) {
+  const html = useMemo(() => {
+    try {
+      return marked.parse(content || "") as string;
+    } catch {
+      return content || "";
+    }
+  }, [content]);
+
+  return (
+    <div
+      className="gpt-markdown-body"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
 
 interface Props {
   onNavigateToRun: (runId: string) => void;
@@ -140,6 +167,7 @@ interface ChatMessage {
     topic: string;
     questions: GrillMeQuestion[];
   };
+  thinkingDurationSec?: number;
 }
 
 export interface ChatSession {
@@ -386,7 +414,9 @@ export function ChatView({
   const [notification, setNotification] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showScrollDown, setShowScrollDown] = useState(false);
 
   const showToast = (msg: string) => {
     setNotification(msg);
@@ -394,7 +424,15 @@ export function ChatView({
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ block: "end" });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    setShowScrollDown(false);
+  };
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 120;
+    setShowScrollDown(!isNearBottom);
   };
 
   useEffect(() => {
@@ -698,14 +736,6 @@ export function ChatView({
             ? `担任【${activeRole.roleName}】`
             : "";
 
-        const statusMsgId = `msg-ai-${Date.now()}`;
-        const statusMsg: ChatMessage = {
-          id: statusMsgId,
-          sender: "assistant",
-          content: `正在调用本地 CLI Agent【${agentName}】${rolePrefix}在工作区【${activeWorkspace.name}】（分支: ${currentBranch}）中执行任务，请稍候…`,
-        };
-        setMessages((prev) => [...prev, statusMsg]);
-
         void (async () => {
           try {
             const promptMessages: UnifiedMessage[] = [];
@@ -728,6 +758,7 @@ export function ChatView({
             });
 
             const durationMs = Date.now() - startTime;
+            const thinkSec = Math.max(1, Math.round(durationMs / 1000));
             const fullCmd = `${agentName} · 受限业务命令 · workspace=${activeWorkspace.path}`;
 
             let displayContent = res.content;
@@ -769,22 +800,23 @@ export function ChatView({
               durationMs,
             };
 
-
             const aiMsg: ChatMessage = {
               id: `msg-ai-${Date.now()}`,
               sender: "assistant",
               content: displayContent,
               cliExecution: executionCard,
+              thinkingDurationSec: thinkSec,
             };
 
-            setMessages((prev) => [...prev.filter((m) => m.id !== statusMsgId), aiMsg]);
+            setMessages((prev) => [...prev, aiMsg]);
           } catch (err) {
             const errMsg: ChatMessage = {
               id: `msg-ai-${Date.now()}`,
               sender: "assistant",
               content: `调用本地 CLI Agent 失败: ${String(err)}`,
+              thinkingDurationSec: Math.max(1, Math.round((Date.now() - startTime) / 1000)),
             };
-            setMessages((prev) => [...prev.filter((m) => m.id !== statusMsgId), errMsg]);
+            setMessages((prev) => [...prev, errMsg]);
           } finally {
             setBusy(false);
           }
@@ -1227,7 +1259,7 @@ export function ChatView({
       )}
 
       {/* Main Conversation Stream */}
-      <div className="gpt-scroll-container">
+      <div className="gpt-scroll-container" ref={scrollContainerRef} onScroll={handleScroll}>
         <div className="gpt-content-col">
           {messages.length === 0 ? (
             /* Elegant Empty State */
@@ -1346,255 +1378,290 @@ export function ChatView({
             <div className="gpt-messages-flow">
               {messages.map((m) => (
                 <div key={m.id} className={`gpt-message-turn ${m.sender}`}>
-                  {m.sender === "assistant" && (
-                    <div className="gpt-assistant-avatar" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                      <IconSparkles size={14} />
-                    </div>
-                  )}
-
-                  <div className="gpt-message-body">
-                    <div className="gpt-text-bubble">
-                      {m.content}
-                    </div>
-
-                    {/* Grill-Me Interactive Block */}
-                    {m.grillMe && (
-                      <div className="gpt-grillme-card">
-                        <div className="grillme-header-row">
-                          <span className="grillme-flame" style={{ display: "inline-flex", alignItems: "center" }}>
-                            <IconFlame size={14} />
-                          </span>
-                          <span className="grillme-title">Grill-Me 架构深度推演与边界确认</span>
-                        </div>
-
-                        {m.grillMe.questions.map((q, qIdx) => (
-                          <div key={qIdx} className="grillme-q-block">
-                            <div className="grillme-q-title">{q.question}</div>
-                            <div className="grillme-opts-container">
-                              {q.options.map((opt, oIdx) => (
-                                <button
-                                  key={oIdx}
-                                  type="button"
-                                  className="grillme-opt-btn"
-                                  onClick={() => handleApplyGrillAnswers(m.grillMe!.topic, opt)}
-                                >
-                                  {opt}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
+                  {m.sender === "user" ? (
+                    <div className="gpt-user-turn-wrapper">
+                      <div className="gpt-user-bubble">
+                        {m.content}
                       </div>
-                    )}
+                      <div className="gpt-user-actions">
+                        <button
+                          type="button"
+                          className="gpt-action-icon-btn"
+                          onClick={() => {
+                            navigator.clipboard.writeText(m.content);
+                            showToast("已复制到剪贴板");
+                          }}
+                          title="复制"
+                        >
+                          <IconCopy size={13} stroke="#8e8e93" />
+                        </button>
+                        <button
+                          type="button"
+                          className="gpt-action-icon-btn"
+                          onClick={() => {
+                            setInputText(m.content);
+                            textareaRef.current?.focus();
+                            showToast("已填入输入框，可直接修改");
+                          }}
+                          title="编辑并重新发送"
+                        >
+                          <IconEdit size={13} stroke="#8e8e93" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="gpt-message-body">
+                      {/* Thinking Status Header (e.g. 思考了 8s) */}
+                      {(m.thinkingDurationSec !== undefined || m.cliExecution?.durationMs !== undefined) && (
+                        <div className="gpt-thinking-header">
+                          <span>
+                            思考了 {m.thinkingDurationSec ?? Math.max(1, Math.round((m.cliExecution?.durationMs || 1000) / 1000))}s
+                          </span>
+                        </div>
+                      )}
 
-                    {/* Architecture Plan Card */}
-                    {m.plan && (
-                      <div className="gpt-card-artifact">
-                        <div className="card-artifact-top">
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                              <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                                <IconPlanning size={15} />
-                                {m.plan.title}
-                              </strong>
-                              <span className="gpt-ws-tag" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                <IconFolder size={11} />
-                                {m.plan.workspaceName}
-                              </span>
-                            </div>
-                            <p style={{ fontSize: "12px", color: "#6e6e73", margin: "4px 0 0" }}>
-                              {m.plan.summary}
-                            </p>
+                      {/* Natural Markdown Response Content */}
+                      <div className="gpt-markdown-body">
+                        <MarkdownView content={m.content} />
+                      </div>
+
+                      {/* Grill-Me Interactive Block */}
+                      {m.grillMe && (
+                        <div className="gpt-grillme-card">
+                          <div className="grillme-header-row">
+                            <span className="grillme-flame" style={{ display: "inline-flex", alignItems: "center" }}>
+                              <IconFlame size={14} />
+                            </span>
+                            <span className="grillme-title">Grill-Me 架构深度推演与边界确认</span>
                           </div>
 
-                          <button
-                            type="button"
-                            className="gpt-btn-primary"
-                            disabled={busy}
-                            onClick={() => void handleSaveToPlanning(m.plan!)}
-                            style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
-                          >
-                            <IconPlus size={12} />
-                            <span>沉淀为立项规划</span>
-                          </button>
-                        </div>
-
-                        <div className="card-phases-wrap">
-                          {m.plan.phases.map((ph, pIdx) => (
-                            <div key={pIdx} className="card-phase-row">
-                              <div style={{ flex: 1, paddingRight: "10px" }}>
-                                <div style={{ fontWeight: 600, fontSize: "13px", color: "#111111" }}>
-                                  阶段 {pIdx + 1}：{ph.title}
-                                </div>
-                                <div style={{ fontSize: "12px", color: "#6e6e73", marginTop: "2px" }}>
-                                  {ph.desc}
-                                </div>
+                          {m.grillMe.questions.map((q, qIdx) => (
+                            <div key={qIdx} className="grillme-q-block">
+                              <div className="grillme-q-title">{q.question}</div>
+                              <div className="grillme-opts-container">
+                                {q.options.map((opt, oIdx) => (
+                                  <button
+                                    key={oIdx}
+                                    type="button"
+                                    className="grillme-opt-btn"
+                                    onClick={() => handleApplyGrillAnswers(m.grillMe!.topic, opt)}
+                                  >
+                                    {opt}
+                                  </button>
+                                ))}
                               </div>
-
-                              <button
-                                type="button"
-                                className="gpt-btn-secondary"
-                                disabled={busy}
-                                onClick={() => void handleDispatchPhase(m.plan!.title, ph.title, ph.desc)}
-                                style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
-                              >
-                                <IconZap size={12} />
-                                <span>派发此任务</span>
-                              </button>
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {/* Scheduled Task Card */}
-                    {m.schedule && (
-                      <div className="gpt-card-artifact">
-                        <div className="card-artifact-top">
-                          <div>
-                            <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                              <IconSchedule size={15} />
-                              定时自动化规则
-                            </strong>
-                            <span className="gpt-ws-tag" style={{ marginLeft: "8px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                              <IconFolder size={11} />
-                              {m.schedule.workspaceName}
-                            </span>
-                          </div>
-
-                          <button
-                            type="button"
-                            className="gpt-btn-primary"
-                            disabled={busy}
-                            onClick={() => void handleCreateScheduleFromChat(m.schedule!)}
-                            style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
-                          >
-                            <IconPlus size={12} />
-                            <span>建立定时规则</span>
-                          </button>
-                        </div>
-
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "10px", fontSize: "12.5px" }}>
-                          <div>
-                            <span style={{ color: "#86868b" }}>任务内容：</span>
-                            <strong>{m.schedule.title}</strong>
-                          </div>
-                          <div>
-                            <span style={{ color: "#86868b" }}>频次：</span>
-                            <strong style={{ color: "#111111" }}>{m.schedule.timeStr}</strong>
-                          </div>
-                          <div>
-                            <span style={{ color: "#86868b" }}>负责模型：</span>
-                            <strong>{m.schedule.model}</strong>
-                          </div>
-                          <div>
-                            <span style={{ color: "#86868b" }}>推理深度：</span>
-                            <strong>{m.schedule.reasoning}</strong>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Server Action Execution Card */}
-                    {m.serverAction && (
-                      <div className="gpt-card-artifact server-action-card">
-                        <div className="card-artifact-top">
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                              <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                                <IconServer size={15} />
-                                {m.serverAction.title}
-                              </strong>
-                              <span className="server-target-tag">
-                                🖥️ {m.serverAction.serverName}
-                              </span>
-                              <span className="server-safety-tag">
-                                {m.serverAction.safetyLevel}
-                              </span>
+                      {/* Architecture Plan Card */}
+                      {m.plan && (
+                        <div className="gpt-card-artifact">
+                          <div className="card-artifact-top">
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                  <IconPlanning size={15} />
+                                  {m.plan.title}
+                                </strong>
+                                <span className="gpt-ws-tag" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                  <IconFolder size={11} />
+                                  {m.plan.workspaceName}
+                                </span>
+                              </div>
+                              <p style={{ fontSize: "12px", color: "#6e6e73", margin: "4px 0 0" }}>
+                                {m.plan.summary}
+                              </p>
                             </div>
-                            <p style={{ fontSize: "12px", color: "#6e6e73", margin: "4px 0 0" }}>
-                              {m.serverAction.summary}
-                            </p>
+
+                            <button
+                              type="button"
+                              className="gpt-btn-primary"
+                              disabled={busy}
+                              onClick={() => void handleSaveToPlanning(m.plan!)}
+                              style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
+                            >
+                              <IconPlus size={12} />
+                              <span>沉淀为立项规划</span>
+                            </button>
                           </div>
 
-                          <button
-                            type="button"
-                            className="gpt-btn-primary"
-                            disabled={busy}
-                            onClick={() => void handleDispatchServerAction(m.serverAction!)}
-                            style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
-                          >
-                            <IconZap size={12} />
-                            <span>在服务器派发执行</span>
-                          </button>
-                        </div>
+                          <div className="card-phases-wrap">
+                            {m.plan.phases.map((ph, pIdx) => (
+                              <div key={pIdx} className="card-phase-row">
+                                <div style={{ flex: 1, paddingRight: "10px" }}>
+                                  <div style={{ fontWeight: 600, fontSize: "13px", color: "#111111" }}>
+                                    阶段 {pIdx + 1}：{ph.title}
+                                  </div>
+                                  <div style={{ fontSize: "12px", color: "#6e6e73", marginTop: "2px" }}>
+                                    {ph.desc}
+                                  </div>
+                                </div>
 
-                        {/* Remote Host Info & Command Preview */}
-                        <div className="server-commands-box">
-                          <div className="server-commands-header">
-                            <span>目标宿主机: {m.serverAction.serverHost}</span>
-                            <span>执行用户: {m.serverAction.user}</span>
-                          </div>
-                          <div className="server-commands-code">
-                            {m.serverAction.commands.map((cmd, cIdx) => (
-                              <div key={cIdx} className="server-cmd-line">
-                                <span className="cmd-prompt">$</span>
-                                <span className="cmd-text">{cmd}</span>
+                                <button
+                                  type="button"
+                                  className="gpt-btn-secondary"
+                                  disabled={busy}
+                                  onClick={() => void handleDispatchPhase(m.plan!.title, ph.title, ph.desc)}
+                                  style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
+                                >
+                                  <IconZap size={12} />
+                                  <span>派发此任务</span>
+                                </button>
                               </div>
                             ))}
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {/* Local CLI Agent Execution Meta / Collapsible Details */}
-                    {m.cliExecution && (
-                      <div className="gpt-cli-meta-row">
-                        <div className="gpt-meta-tags">
-                          <span className="gpt-meta-pill">
-                            <IconCpu size={12} />
-                            {m.cliExecution.agentName}
-                          </span>
-                          <span className={`gpt-meta-pill ${m.cliExecution.success ? "succeeded" : "failed"}`}>
-                            {m.cliExecution.success ? "执行成功" : `退出码 ${m.cliExecution.exitCode}`}
-                          </span>
-                          <span className="gpt-meta-pill">
-                            ⏱️ {(m.cliExecution.durationMs / 1000).toFixed(1)}s
-                          </span>
-                          {m.cliExecution.workspacePath && (
-                            <span className="gpt-meta-pill gpt-meta-pill-muted" title={m.cliExecution.workspacePath}>
-                              {m.cliExecution.workspacePath.split("/").filter(Boolean).pop() || m.cliExecution.workspacePath}
-                            </span>
-                          )}
-                        </div>
-
-                        <details className="gpt-cli-details">
-                          <summary className="gpt-cli-summary">
-                            查看终端命令与原始输出
-                          </summary>
-                          <div className="cli-terminal-box" style={{ marginTop: "6px" }}>
-                            <div className="cli-terminal-header">
-                              <span className="cli-cmd-display">$ {m.cliExecution.command}</span>
+                      {/* Scheduled Task Card */}
+                      {m.schedule && (
+                        <div className="gpt-card-artifact">
+                          <div className="card-artifact-top">
+                            <div>
+                              <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                <IconSchedule size={15} />
+                                定时自动化规则
+                              </strong>
+                              <span className="gpt-ws-tag" style={{ marginLeft: "8px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                <IconFolder size={11} />
+                                {m.schedule.workspaceName}
+                              </span>
                             </div>
-                            <pre className="cli-terminal-output">
-                              {m.cliExecution.stdout || "(无标准输出)"}
-                            </pre>
+
+                            <button
+                              type="button"
+                              className="gpt-btn-primary"
+                              disabled={busy}
+                              onClick={() => void handleCreateScheduleFromChat(m.schedule!)}
+                              style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
+                            >
+                              <IconPlus size={12} />
+                              <span>建立定时规则</span>
+                            </button>
                           </div>
-                        </details>
-                      </div>
-                    )}
-                  </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "10px", fontSize: "12.5px" }}>
+                            <div>
+                              <span style={{ color: "#86868b" }}>任务内容：</span>
+                              <strong>{m.schedule.title}</strong>
+                            </div>
+                            <div>
+                              <span style={{ color: "#86868b" }}>频次：</span>
+                              <strong style={{ color: "#111111" }}>{m.schedule.timeStr}</strong>
+                            </div>
+                            <div>
+                              <span style={{ color: "#86868b" }}>负责模型：</span>
+                              <strong>{m.schedule.model}</strong>
+                            </div>
+                            <div>
+                              <span style={{ color: "#86868b" }}>推理深度：</span>
+                              <strong>{m.schedule.reasoning}</strong>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Server Action Execution Card */}
+                      {m.serverAction && (
+                        <div className="gpt-card-artifact server-action-card">
+                          <div className="card-artifact-top">
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                  <IconServer size={15} />
+                                  {m.serverAction.title}
+                                </strong>
+                                <span className="server-target-tag">
+                                  🖥️ {m.serverAction.serverName}
+                                </span>
+                                <span className="server-safety-tag">
+                                  {m.serverAction.safetyLevel}
+                                </span>
+                              </div>
+                              <p style={{ fontSize: "12px", color: "#6e6e73", margin: "4px 0 0" }}>
+                                {m.serverAction.summary}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              className="gpt-btn-primary"
+                              disabled={busy}
+                              onClick={() => void handleDispatchServerAction(m.serverAction!)}
+                              style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
+                            >
+                              <IconZap size={12} />
+                              <span>在服务器派发执行</span>
+                            </button>
+                          </div>
+
+                          {/* Remote Host Info & Command Preview */}
+                          <div className="server-commands-box">
+                            <div className="server-commands-header">
+                              <span>目标宿主机: {m.serverAction.serverHost}</span>
+                              <span>执行用户: {m.serverAction.user}</span>
+                            </div>
+                            <div className="server-commands-code">
+                              {m.serverAction.commands.map((cmd, cIdx) => (
+                                <div key={cIdx} className="server-cmd-line">
+                                  <span className="cmd-prompt">$</span>
+                                  <span className="cmd-text">{cmd}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Local CLI Agent Execution Meta / Collapsible Details */}
+                      {m.cliExecution && (
+                        <div className="gpt-cli-meta-row">
+                          <div className="gpt-meta-tags">
+                            <span className="gpt-meta-pill">
+                              <IconCpu size={12} />
+                              {m.cliExecution.agentName}
+                            </span>
+                            <span className={`gpt-meta-pill ${m.cliExecution.success ? "succeeded" : "failed"}`}>
+                              {m.cliExecution.success ? "执行成功" : `退出码 ${m.cliExecution.exitCode}`}
+                            </span>
+                            <span className="gpt-meta-pill">
+                              ⏱️ {(m.cliExecution.durationMs / 1000).toFixed(1)}s
+                            </span>
+                            {m.cliExecution.workspacePath && (
+                              <span className="gpt-meta-pill gpt-meta-pill-muted" title={m.cliExecution.workspacePath}>
+                                {m.cliExecution.workspacePath.split("/").filter(Boolean).pop() || m.cliExecution.workspacePath}
+                              </span>
+                            )}
+                          </div>
+
+                          <details className="gpt-cli-details">
+                            <summary className="gpt-cli-summary">
+                              查看终端命令与原始输出
+                            </summary>
+                            <div className="cli-terminal-box" style={{ marginTop: "6px" }}>
+                              <div className="cli-terminal-header">
+                                <span className="cli-cmd-display">$ {m.cliExecution.command}</span>
+                              </div>
+                              <pre className="cli-terminal-output">
+                                {m.cliExecution.stdout || "(无标准输出)"}
+                              </pre>
+                            </div>
+                          </details>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
 
               {busy && (
                 <div className="gpt-message-turn assistant">
-                  <div className="gpt-assistant-avatar" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                    <IconSparkles size={14} />
-                  </div>
                   <div className="gpt-message-body">
-                    <div className="gpt-thinking-shimmer">
-                      <span>AgentFlow 正在深度思考…</span>
+                    <div className="gpt-thinking-header thinking-active">
+                      <span className="gpt-thinking-pulse-dot" />
+                      <span>正在深度思考…</span>
                     </div>
                   </div>
                 </div>
@@ -1605,6 +1672,18 @@ export function ChatView({
           )}
         </div>
       </div>
+
+      {/* Floating Scroll Down Arrow Button */}
+      {showScrollDown && (
+        <button
+          type="button"
+          className="gpt-scroll-down-btn"
+          onClick={scrollToBottom}
+          title="滚动至最新消息"
+        >
+          <IconArrowDown size={15} stroke="#38383a" />
+        </button>
+      )}
 
       {/* Floating Bottom Input Dock with Screenshot Style Envelope */}
       <div className="gpt-bottom-dock-wrapper">
