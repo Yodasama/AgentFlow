@@ -777,6 +777,8 @@ async fn run_cli_agent(
         if provider_id.starts_with("provider-cli-agy-") {
             cmd.env("SSH_CONNECTION", "127.0.0.1 50000 127.0.0.1 22");
         }
+        inject_proxy_env(&mut cmd);
+
 
         let output = cmd
             .output()
@@ -1281,6 +1283,55 @@ fn read_codex_app_server() -> Result<Vec<serde_json::Value>, String> {
     Ok(messages)
 }
 
+fn inject_proxy_env(cmd: &mut std::process::Command) {
+    let mut found = false;
+    for var in [
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+    ] {
+        if let Ok(val) = std::env::var(var) {
+            if !val.trim().is_empty() {
+                cmd.env(var, &val);
+                found = true;
+            }
+        }
+    }
+    if !found {
+        if let Ok(home) = std::env::var("HOME") {
+            let zshrc = PathBuf::from(&home).join(".zshrc");
+            if let Ok(content) = std::fs::read_to_string(zshrc) {
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    for prefix in [
+                        "export http_proxy=",
+                        "export https_proxy=",
+                        "export all_proxy=",
+                        "export HTTP_PROXY=",
+                        "export HTTPS_PROXY=",
+                        "export ALL_PROXY=",
+                    ] {
+                        if trimmed.starts_with(prefix) {
+                            let key = prefix.trim_start_matches("export ").trim_end_matches('=');
+                            let val = trimmed
+                                .split('=')
+                                .nth(1)
+                                .unwrap_or("")
+                                .trim_matches(|c| c == '"' || c == '\'');
+                            if !val.is_empty() {
+                                cmd.env(key, val);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn read_agy_quota(provider_id: &str) -> Result<Vec<AgyQuotaGroup>, String> {
     let (program, custom_home) = resolve_cli_provider(provider_id)?;
     let system_home = std::env::var_os("HOME")
@@ -1308,6 +1359,7 @@ fn read_agy_quota(provider_id: &str) -> Result<Vec<AgyQuotaGroup>, String> {
     // Set SSH_CONNECTION so agy enters headless mode, bypasses macOS Keychain lookup,
     // and reads directly from the isolated antigravity-oauth-token file.
     command.env("SSH_CONNECTION", "127.0.0.1 50000 127.0.0.1 22");
+    inject_proxy_env(&mut command);
     let output = command
         .output()
         .map_err(|error| format!("无法读取 agy 配额: {error}"))?;
@@ -1321,6 +1373,7 @@ fn read_agy_quota(provider_id: &str) -> Result<Vec<AgyQuotaGroup>, String> {
     }
     Ok(response.command.data.groups)
 }
+
 
 #[tauri::command]
 fn open_native_view(target: String) -> Result<String, String> {
@@ -1631,13 +1684,16 @@ fn fetch_external_url(url: String) -> Result<String, String> {
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err("仅支持 http:// 或 https:// 链接".to_string());
     }
-    let output = Command::new("curl")
-        .arg("-sSL")
+    let mut cmd = Command::new("curl");
+    cmd.arg("-sSL")
         .arg("--max-time")
         .arg("15")
-        .arg(&url)
+        .arg(&url);
+    inject_proxy_env(&mut cmd);
+    let output = cmd
         .output()
         .map_err(|e| format!("执行网络请求失败: {}", e))?;
+
 
     if !output.status.success() {
         return Err(format!("下载失败，状态码: {:?}", output.status.code()));
