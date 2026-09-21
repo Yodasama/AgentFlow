@@ -773,7 +773,7 @@ export function ChatView({
             const aiMsg: ChatMessage = {
               id: `msg-ai-${Date.now()}`,
               sender: "assistant",
-              content: `本地 CLI Agent【${agentName}】已在工作区【${activeWorkspace.name}】完成执行：`,
+              content: displayContent,
               cliExecution: executionCard,
             };
 
@@ -1547,38 +1547,40 @@ export function ChatView({
                       </div>
                     )}
 
-                    {/* Local CLI Agent Execution Terminal Card */}
+                    {/* Local CLI Agent Execution Meta / Collapsible Details */}
                     {m.cliExecution && (
-                      <div className="gpt-card-artifact cli-execution-card">
-                        <div className="card-artifact-top">
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                              <strong style={{ fontSize: "14px", color: "#111111", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                                <IconCpu size={15} />
-                                {m.cliExecution.agentName}
-                              </strong>
-                              <span className={`apple-pill ${m.cliExecution.success ? "succeeded" : "failed"}`} style={{ fontSize: "10.5px" }}>
-                                {m.cliExecution.success ? "执行成功" : `退出码 ${m.cliExecution.exitCode}`}
-                              </span>
-                              <span className="server-target-tag">
-                                ⏱️ {(m.cliExecution.durationMs / 1000).toFixed(1)}s
-                              </span>
-                            </div>
-                            <p style={{ fontSize: "12px", color: "#6e6e73", margin: "4px 0 0" }}>
-                              工作区路径：{m.cliExecution.workspacePath}
-                            </p>
-                          </div>
+                      <div className="gpt-cli-meta-row">
+                        <div className="gpt-meta-tags">
+                          <span className="gpt-meta-pill">
+                            <IconCpu size={12} />
+                            {m.cliExecution.agentName}
+                          </span>
+                          <span className={`gpt-meta-pill ${m.cliExecution.success ? "succeeded" : "failed"}`}>
+                            {m.cliExecution.success ? "执行成功" : `退出码 ${m.cliExecution.exitCode}`}
+                          </span>
+                          <span className="gpt-meta-pill">
+                            ⏱️ {(m.cliExecution.durationMs / 1000).toFixed(1)}s
+                          </span>
+                          {m.cliExecution.workspacePath && (
+                            <span className="gpt-meta-pill gpt-meta-pill-muted" title={m.cliExecution.workspacePath}>
+                              {m.cliExecution.workspacePath.split("/").filter(Boolean).pop() || m.cliExecution.workspacePath}
+                            </span>
+                          )}
                         </div>
 
-                        {/* Terminal Box */}
-                        <div className="cli-terminal-box">
-                          <div className="cli-terminal-header">
-                            <span className="cli-cmd-display">$ {m.cliExecution.command}</span>
+                        <details className="gpt-cli-details">
+                          <summary className="gpt-cli-summary">
+                            查看终端命令与原始输出
+                          </summary>
+                          <div className="cli-terminal-box" style={{ marginTop: "6px" }}>
+                            <div className="cli-terminal-header">
+                              <span className="cli-cmd-display">$ {m.cliExecution.command}</span>
+                            </div>
+                            <pre className="cli-terminal-output">
+                              {m.cliExecution.stdout || "(无标准输出)"}
+                            </pre>
                           </div>
-                          <pre className="cli-terminal-output">
-                            {m.cliExecution.stdout || "(无标准输出)"}
-                          </pre>
-                        </div>
+                        </details>
                       </div>
                     )}
                   </div>
@@ -1618,7 +1620,7 @@ export function ChatView({
                   setActiveContextPopup(activeContextPopup === "project" ? null : "project")
                 }
               >
-                <IconFolder size={13} stroke="#38383a" />
+                <IconFolder size={12} stroke="#38383a" />
                 <span>{activeWorkspace?.name || "选择项目"}</span>
               </button>
 
@@ -1713,9 +1715,9 @@ export function ChatView({
                 }
               >
                 {envTarget === "local" ? (
-                  <IconLaptop size={13} stroke="#38383a" />
+                  <IconLaptop size={12} stroke="#38383a" />
                 ) : (
-                  <IconServer size={13} stroke="#38383a" />
+                  <IconServer size={12} stroke="#38383a" />
                 )}
                 <span>{envDisplayLabel}</span>
               </button>
@@ -1797,7 +1799,7 @@ export function ChatView({
                   setActiveContextPopup(activeContextPopup === "branch" ? null : "branch")
                 }
               >
-                <IconGitBranch size={13} stroke="#38383a" />
+                <IconGitBranch size={12} stroke="#38383a" />
                 <span>{currentBranch || "main"}</span>
               </button>
 
@@ -2020,10 +2022,6 @@ export function ChatView({
                 </button>
               </div>
             </div>
-          </div>
-
-          <div className="gpt-footer-disclaimer">
-            AgentFlow 可能会产生工程建议，任务将在对应工作区的独立 Git 分支中隔离执行。
           </div>
         </div>
       </div>
