@@ -1422,7 +1422,13 @@ export function ChatView({
 
                       {/* Natural Markdown Response Content */}
                       <div className="gpt-markdown-body">
-                        <MarkdownView content={m.content} />
+                        <MarkdownView
+                          content={
+                            m.content.includes("已在工作区") && m.content.includes("完成执行") && m.cliExecution?.stdout
+                              ? m.cliExecution.stdout
+                              : m.content
+                          }
+                        />
                       </div>
 
                       {/* Grill-Me Interactive Block */}
@@ -1612,43 +1618,6 @@ export function ChatView({
                               ))}
                             </div>
                           </div>
-                        </div>
-                      )}
-
-                      {/* Local CLI Agent Execution Meta / Collapsible Details */}
-                      {m.cliExecution && (
-                        <div className="gpt-cli-meta-row">
-                          <div className="gpt-meta-tags">
-                            <span className="gpt-meta-pill">
-                              <IconCpu size={12} />
-                              {m.cliExecution.agentName}
-                            </span>
-                            <span className={`gpt-meta-pill ${m.cliExecution.success ? "succeeded" : "failed"}`}>
-                              {m.cliExecution.success ? "执行成功" : `退出码 ${m.cliExecution.exitCode}`}
-                            </span>
-                            <span className="gpt-meta-pill">
-                              ⏱️ {(m.cliExecution.durationMs / 1000).toFixed(1)}s
-                            </span>
-                            {m.cliExecution.workspacePath && (
-                              <span className="gpt-meta-pill gpt-meta-pill-muted" title={m.cliExecution.workspacePath}>
-                                {m.cliExecution.workspacePath.split("/").filter(Boolean).pop() || m.cliExecution.workspacePath}
-                              </span>
-                            )}
-                          </div>
-
-                          <details className="gpt-cli-details">
-                            <summary className="gpt-cli-summary">
-                              查看终端命令与原始输出
-                            </summary>
-                            <div className="cli-terminal-box" style={{ marginTop: "6px" }}>
-                              <div className="cli-terminal-header">
-                                <span className="cli-cmd-display">$ {m.cliExecution.command}</span>
-                              </div>
-                              <pre className="cli-terminal-output">
-                                {m.cliExecution.stdout || "(无标准输出)"}
-                              </pre>
-                            </div>
-                          </details>
                         </div>
                       )}
                     </div>
