@@ -27,6 +27,7 @@ use crate::{
         TerminationReason, read_json, write_json_atomically,
     },
     storage::{Storage, StorageError},
+    task_workflow_runtime::{TaskWorkflowRuntimeError, advance_task_workflows},
 };
 
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
@@ -78,6 +79,8 @@ pub enum ExecutionError {
     Storage(#[from] StorageError),
     #[error(transparent)]
     Development(#[from] DevelopmentRuntimeError),
+    #[error(transparent)]
+    TaskWorkflow(#[from] TaskWorkflowRuntimeError),
     #[error("scheduler configuration is invalid: {0}")]
     InvalidConfiguration(String),
     #[error("runner identity is invalid for attempt {0}")]
@@ -203,6 +206,7 @@ fn scheduler_tick(
 ) -> Result<(), ExecutionError> {
     observe_active_attempts(storage, config)?;
     advance_mock_development_runs(storage, config)?;
+    advance_task_workflows(storage, config)?;
     let pending = storage
         .lock()
         .map_err(|_| ExecutionError::PoisonedStorage)?

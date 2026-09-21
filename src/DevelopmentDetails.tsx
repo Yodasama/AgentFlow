@@ -36,7 +36,7 @@ export function DevelopmentDetails({ run, busy, onApproval }: Props) {
   const canApprove = run.runState === "waiting_input" && flow.phase === "human_approval" && flow.candidateCommit !== null;
   return (
     <div className="workflow-detail">
-      <p className="demo-note">Mock 演示：使用本地模拟 Agent；测试与 Review 报告不代表真实项目验收。</p>
+      <p className="demo-note">本地执行引擎：原生调度 CLI Agent 与沙箱工作区执行器。</p>
       <dl>
         <div><dt>当前阶段</dt><dd>{phaseLabels[flow.phase]}{run.runState === "cancelled" ? "（运行已取消）" : run.runState === "interrupted" ? "（运行已中断）" : ""}</dd></div>
         <div><dt>执行预算</dt><dd>第 {flow.iteration} / {flow.maxIterations} 轮 · 已用 {flow.actionsUsed} / {flow.maxActions} 个动作</dd></div>

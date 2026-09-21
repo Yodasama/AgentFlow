@@ -20,6 +20,7 @@ export interface DrawerSelectProps {
   menuStyle?: React.CSSProperties;
   disabled?: boolean;
   size?: "sm" | "md";
+  direction?: "down" | "up" | "auto";
 }
 
 export function DrawerSelect({
@@ -33,9 +34,29 @@ export function DrawerSelect({
   menuStyle,
   disabled = false,
   size = "md",
+  direction = "down",
 }: DrawerSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [actualDirection, setActualDirection] = useState<"down" | "up">(
+    direction === "up" ? "up" : "down"
+  );
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (direction === "up") {
+      setActualDirection("up");
+    } else if (direction === "down") {
+      setActualDirection("down");
+    } else if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 280) {
+        setActualDirection("up");
+      } else {
+        setActualDirection("down");
+      }
+    }
+  }, [isOpen, direction]);
 
   const selectedOption = options.find((opt) => opt.value === value);
 
@@ -100,7 +121,7 @@ export function DrawerSelect({
       {/* Drawer-Style Unfolding Dropdown Menu */}
       {isOpen && (
         <div
-          className="drawer-select-dropdown"
+          className={`drawer-select-dropdown ${actualDirection === "up" ? "direction-up" : ""}`}
           style={menuStyle}
           role="listbox"
         >

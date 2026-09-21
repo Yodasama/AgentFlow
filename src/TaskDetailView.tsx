@@ -16,11 +16,13 @@ import "@xyflow/react/dist/style.css";
 import {
   cancelRun,
   createMockTask,
+  createTaskWorkflowDraft,
   getAttemptLogs,
   getCheckpointDiff,
   getRun,
   listCheckpoints,
   submitDevelopmentApproval,
+  submitTaskWorkflowApproval,
   getDevelopmentRun,
   type AttemptLogs,
   type CheckpointRecord,
@@ -28,6 +30,7 @@ import {
   type RunDetail,
   type RunState,
 } from "./api";
+import { WorkflowEditor } from "./WorkflowEditor";
 import { loadAgentRoles, type AgentRoleConfig } from "./AgentManagerView";
 import { getTaskProjectLinks } from "./TasksListView";
 import { getTaskWorkspace } from "./workspaces";
@@ -250,9 +253,10 @@ interface Props {
   runId: string;
   onBack: () => void;
   onRefreshList: () => Promise<void>;
+  onSelectRun?: (runId: string) => void;
 }
 
-export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
+export function TaskDetailView({ runId, onBack, onRefreshList, onSelectRun }: Props) {
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [snapshot, setSnapshot] = useState<DevelopmentRunSnapshot | null>(null);
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
@@ -262,6 +266,9 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
   const [approvalComment, setApprovalComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Studio Stage Active Tab
+  const [activeDetailTab, setActiveDetailTab] = useState<"workflow" | "git" | "diff" | "logs" | "status">("status");
 
   // Git Branch Tree Hover & Selection State
   const [hoveredCommit, setHoveredCommit] = useState<VisualCommitNode | null>(null);
@@ -280,7 +287,7 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
   // New Node Modal
   const [showAddNodeModal, setShowAddNodeModal] = useState(false);
   const [newNodeRole, setNewNodeRole] = useState("开发编写");
-  const [newNodeModel, setNewNodeModel] = useState("Claude 3.5 Sonnet");
+  const [newNodeModel, setNewNodeModel] = useState("Google agy (账号 1)");
   const [newNodeReasoning, setNewNodeReasoning] = useState("深度");
   const [newNodeLabel, setNewNodeLabel] = useState("");
 
@@ -289,19 +296,12 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
     setAvailableRoles(currentRoles);
     if (currentRoles.length > 0) {
       setNewNodeRole(currentRoles[0].roleName);
-      setNewNodeModel(currentRoles[0].defaultModel);
-      setNewNodeReasoning(currentRoles[0].defaultReasoning);
     }
     setShowAddNodeModal(true);
   };
 
   const handleRoleSelectChange = (roleName: string) => {
     setNewNodeRole(roleName);
-    const found = availableRoles.find((r) => r.roleName === roleName);
-    if (found) {
-      setNewNodeModel(found.defaultModel);
-      setNewNodeReasoning(found.defaultReasoning);
-    }
   };
 
   const loadData = useCallback(async () => {
@@ -516,7 +516,7 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
             data: {
               label: detail.title,
               role: "独立执行",
-              model: "Mock Agent / 本地模型",
+              model: "Google agy (账号 1)",
               reasoning: "标准",
               status:
                 detail.runState === "running"
@@ -628,14 +628,49 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
     if (!detail) return;
     setBusy(true);
     try {
-      await createMockTask({
-        title: `[重试] ${detail.title}`,
+      let createdRunId = "";
+      if (detail.workflowKind === "task_workflow") {
+        const created = await createTaskWorkflowDraft({
+          title: `[重试] ${detail.title}`,
+          description: detail.description,
+          acceptanceCriteria: detail.acceptanceCriteria,
+        });
+        createdRunId = created.runId;
+      } else {
+        const created = await createMockTask({
+          title: `[重试] ${detail.title}`,
+          description: detail.description,
+          acceptanceCriteria: detail.acceptanceCriteria,
+          outcome: "succeeded",
+        });
+        createdRunId = created.runId;
+      }
+      await onRefreshList();
+      if (onSelectRun) {
+        onSelectRun(createdRunId);
+      } else {
+        onBack();
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleForkAsTaskWorkflow = async () => {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      const created = await createTaskWorkflowDraft({
+        title: `[工作流] ${detail.title}`,
         description: detail.description,
         acceptanceCriteria: detail.acceptanceCriteria,
-        outcome: "succeeded",
       });
       await onRefreshList();
-      onBack();
+      if (onSelectRun) {
+        onSelectRun(created.runId);
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -664,6 +699,19 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
     }
   };
 
+  const handleTaskWorkflowApproval = async (approved: boolean) => {
+    setBusy(true);
+    try {
+      await submitTaskWorkflowApproval(runId, approved);
+      await loadData();
+      await onRefreshList();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSelectCommit = async (node: VisualCommitNode) => {
     setSelectedCommit(node);
     if (node.checkpointId) {
@@ -671,6 +719,7 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
         const diff = await getCheckpointDiff(node.checkpointId);
         setDiffText(diff);
         setActiveLogTab("diff");
+        setActiveDetailTab("diff");
       } catch {
         // ignore
       }
@@ -687,22 +736,28 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
 
   // Derive status details for lower half
   const phase = snapshot?.flow.phase;
+  const isWorkflowDraft = detail.workflowKind === "task_workflow"
+    && detail.runState === "waiting_input"
+    && detail.waitingReason === "编辑并确认任务工作流后启动";
   const isWaitingApproval =
     detail.runState === "waiting_input" && phase === "human_approval";
   const hasBlockers =
     detail.runState === "failed" ||
     detail.runState === "interrupted" ||
     isWaitingApproval ||
-    Boolean(detail.waitingReason);
+    (Boolean(detail.waitingReason) && !isWorkflowDraft);
+  const detailStateLabel = isWorkflowDraft
+      ? "工作流草稿"
+      : stateLabels[detail.runState];
 
   return (
     <div className="task-detail-page">
-      {/* Top Header Bar */}
+      {/* Top Header Bar with Integrated Metadata */}
       <div className="detail-top-nav">
-        <button className="apple-btn-secondary" type="button" onClick={onBack}>
-          ← 返回任务列表
-        </button>
-        <div className="task-title-group">
+        <div className="detail-top-left">
+          <button className="apple-btn-secondary back-btn" type="button" onClick={onBack}>
+            ← 返回
+          </button>
           <div className="task-breadcrumb">
             {linkedProject ? (
               <span className="breadcrumb-project" title={`所属立项：${linkedProject.planTitle}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
@@ -712,445 +767,404 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
             ) : (
               <span className="breadcrumb-light" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
                 <IconZap size={11} />
-                <span>独立轻任务</span>
+                <span>轻量任务</span>
               </span>
             )}
 
             {taskWs && (
               <span
                 className="breadcrumb-ws"
-                title={`绑定工作区：${taskWs.workspacePath} (${taskWs.branch})`}
+                title={`工作区：${taskWs.workspacePath} (${taskWs.branch})`}
                 style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
               >
                 <IconFolder size={11} />
                 <span>{taskWs.workspaceName}</span>
                 <span className="breadcrumb-branch-tag" style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
-                  <IconGitBranch size={9} />
+                  <IconGitBranch size={10} />
                   {taskWs.branch}
                 </span>
               </span>
             )}
 
-            <span className="breadcrumb-sep">›</span>
-            <span className="breadcrumb-current">{detail.title}</span>
+            <span className="breadcrumb-sep">/</span>
+            <span className="breadcrumb-current" title={detail.title}>{detail.title}</span>
+            <span className="header-meta-tag" title={`Run ID: ${detail.runId}`}>#{detail.attemptNumber ?? 1} · {detail.runId.slice(0, 8)}</span>
+            {detail.createdAt && (
+              <span className="header-meta-time" title={`创建时间：${new Date(detail.createdAt).toLocaleString("zh-CN")}`}>
+                {new Date(detail.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
           </div>
-          <span className={`apple-pill ${detail.runState}`}>
-            {stateLabels[detail.runState]}
-          </span>
         </div>
-        <div className="detail-action-buttons">
-          {["queued", "running", "waiting_input"].includes(detail.runState) && (
+
+        <div className="detail-top-right">
+          <span className={`apple-pill ${detail.runState}`}>
+            {detailStateLabel}
+          </span>
+
+          <div className="detail-action-buttons">
+            {["queued", "running", "waiting_input"].includes(detail.runState) && !isWorkflowDraft && (
+              <button
+                className="apple-btn-secondary"
+                type="button"
+                disabled={busy}
+                onClick={() => void handleCancelRun()}
+              >
+                终止执行
+              </button>
+            )}
+            <button
+              className="apple-btn-primary"
+              type="button"
+              disabled={busy}
+              onClick={() => void handleRerun()}
+            >
+              重新运行
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Alerts */}
+      {error && <div className="apple-alert-box error">{error}</div>}
+
+      {/* Waiting Approval Banner (High priority) */}
+      {isWaitingApproval && (
+        <div className="task-approval-banner">
+          <div className="approval-banner-info">
+            <div className="approval-banner-title">
+              <IconAlertTriangle size={15} />
+              <span>当前 Checkpoint 已就绪，等待人工验收与合并确认</span>
+            </div>
+            <p className="approval-banner-desc">
+              候选 Commit: <code>{snapshot?.flow.candidateCommit?.slice(0, 10)}</code> · 所有测试与 Review 已通过。请审批是否准予合并交付。
+            </p>
+          </div>
+          <div className="approval-banner-actions">
+            <input
+              type="text"
+              className="approval-comment-input"
+              placeholder="审批批注（要求修改时建议填写）…"
+              value={approvalComment}
+              onChange={(e) => setApprovalComment(e.target.value)}
+            />
             <button
               className="apple-btn-secondary"
               type="button"
               disabled={busy}
-              onClick={() => void handleCancelRun()}
+              onClick={() => void handleApproval("rejected")}
             >
-              终止执行
+              要求修改返工
             </button>
-          )}
+            <button
+              className="apple-btn-primary"
+              type="button"
+              disabled={busy}
+              onClick={() => void handleApproval("approved")}
+            >
+              批准并通过
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Studio Segmented Control Tabs */}
+      <div className="detail-tabs-bar">
+        <div className="detail-tabs-group">
           <button
-            className="apple-btn-primary"
+            type="button"
+            className={`detail-tab-btn ${activeDetailTab === "status" ? "active" : ""}`}
+            onClick={() => setActiveDetailTab("status")}
+          >
+            <span className="tab-icon">📊</span>
+            <span>状态与审计</span>
+            {hasBlockers && <span className="tab-badge alert">待处理</span>}
+          </button>
+          <button
+            type="button"
+            className={`detail-tab-btn ${activeDetailTab === "workflow" ? "active" : ""}`}
+            onClick={() => setActiveDetailTab("workflow")}
+          >
+            <span className="tab-icon">⚡</span>
+            <span>工作流画布</span>
+            <span className="tab-badge">{detail.workflowKind === "task_workflow" ? (isWorkflowDraft ? "草稿" : "已启动") : "快照"}</span>
+          </button>
+          <button
+            type="button"
+            className={`detail-tab-btn ${activeDetailTab === "git" ? "active" : ""}`}
+            onClick={() => setActiveDetailTab("git")}
+          >
+            <span className="tab-icon">🌿</span>
+            <span>Git 演进树</span>
+            <span className="tab-count">{treeNodes.length}</span>
+          </button>
+          <button
+            type="button"
+            className={`detail-tab-btn ${activeDetailTab === "diff" ? "active" : ""}`}
+            onClick={() => setActiveDetailTab("diff")}
+          >
+            <span className="tab-icon">🔍</span>
+            <span>代码 Diff</span>
+            {diffText && <span className="tab-dot" />}
+          </button>
+          <button
+            type="button"
+            className={`detail-tab-btn ${activeDetailTab === "logs" ? "active" : ""}`}
+            onClick={() => setActiveDetailTab("logs")}
+          >
+            <span className="tab-icon">📄</span>
+            <span>终端运行日志</span>
+            {logs?.stderr && <span className="tab-badge error">stderr</span>}
+          </button>
+        </div>
+
+        {detail.workflowKind === "development_workflow" && activeDetailTab === "workflow" && (
+          <button
+            className="apple-btn-secondary convert-workflow-btn"
             type="button"
             disabled={busy}
-            onClick={() => void handleRerun()}
+            onClick={() => void handleForkAsTaskWorkflow()}
+            title="将此任务转为可视化工作流草稿，可在画布自由增删节点、连线并启动"
           >
-            重新运行
+            🪄 转为可编辑工作流草稿
           </button>
-        </div>
+        )}
       </div>
 
-      {error && <div className="apple-alert-box error">{error}</div>}
-
-      {/* Upper Half: MindMap Flow Canvas */}
-      <section className="mindmap-canvas-section">
-        <div className="canvas-header-bar">
-          <div className="canvas-title-wrap">
-            <span className="section-title">任务架构与执行流</span>
-            <small className="section-sub">
-              可视化当前执行链路。每个节点展示模型引擎、推理深度与担任的功能角色
-            </small>
-          </div>
-          <button
-            className="apple-btn-secondary add-node-btn"
-            type="button"
-            onClick={() => setShowAddNodeModal(true)}
-          >
-            + 补充节点
-          </button>
-        </div>
-
-        <div className="mindmap-reactflow-wrapper">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes}
-            fitView
-            proOptions={{ hideAttribution: true }}
-            nodesDraggable
-          >
-            <Background color="#eaeaea" gap={24} size={1} />
-            <Controls showInteractive={false} />
-          </ReactFlow>
-        </div>
-      </section>
-
-      {/* Middle: Git Branch & Commit DAG Tree View */}
-      <section className="git-tree-section">
-        <div className="git-tree-header">
-          <div className="tree-header-info">
-            <span className="section-title">Git 分支演进树 (Tree Graph)</span>
-            <small className="section-sub">
-              鼠标悬停节点可查看 Commit 详细内容与受控文件，点击可定位代码 Diff
-            </small>
-          </div>
-          <div className="branch-pills-row">
-            <span className="branch-tag main" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-              <IconGitBranch size={12} />
-              <span>main (基准)</span>
-            </span>
-            <span className="branch-arrow" style={{ display: "inline-flex", alignItems: "center" }}>
-              <IconChevronRight size={12} />
-            </span>
-            <span className="branch-tag worktree" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-              <IconGitBranch size={12} />
-              <span>{branchName} (隔离开发)</span>
-            </span>
-          </div>
-        </div>
-
-        <div className="git-tree-body">
-          {/* Horizontal Tree DAG */}
-          <div className="git-tree-dag">
-            {treeNodes.map((c, idx) => {
-              const isHovered = hoveredCommit?.id === c.id;
-              const isSelected = selectedCommit?.id === c.id;
-
-              return (
-                <div
-                  key={c.id}
-                  className={`git-tree-node-wrapper ${isSelected ? "selected" : ""}`}
-                  onMouseEnter={() => setHoveredCommit(c)}
-                  onMouseLeave={() => setHoveredCommit(null)}
-                  onClick={() => void handleSelectCommit(c)}
+      {/* Tab 1: Workflow Canvas */}
+      {activeDetailTab === "workflow" && (
+        <section className="mindmap-canvas-section task-workflow-editor-section">
+          {detail.workflowKind === "task_workflow" ? (
+            <>
+              <WorkflowEditor
+                runId={runId}
+                onStarted={async () => {
+                  await loadData();
+                  await onRefreshList();
+                }}
+                onForkDraft={(newRunId) => {
+                  void onRefreshList().then(() => {
+                    if (onSelectRun) {
+                      onSelectRun(newRunId);
+                    }
+                  });
+                }}
+              />
+              {detail.runState === "waiting_input" && detail.waitingReason === "工作流等待人工确认" && (
+                <div className="task-workflow-approval-bar">
+                  <span>当前节点等待人工确认</span>
+                  <button className="apple-btn-secondary" type="button" disabled={busy}
+                    onClick={() => void handleTaskWorkflowApproval(false)}>拒绝并走默认路径</button>
+                  <button className="apple-btn-primary" type="button" disabled={busy}
+                    onClick={() => void handleTaskWorkflowApproval(true)}>批准并继续</button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="dev-workflow-snapshot-wrapper">
+              <div className="canvas-header-bar">
+                <div className="canvas-title-wrap">
+                  <span className="section-title">轻量任务执行流快照</span>
+                  <small className="section-sub">
+                    当前任务以轻量单步模式运行。点击右上角「🪄 转为可编辑工作流草稿」可解锁完整 DAG 画布编辑。
+                  </small>
+                </div>
+              </div>
+              <div className="mindmap-reactflow-wrapper" style={{ height: "480px" }}>
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  nodeTypes={nodeTypes}
+                  fitView
+                  proOptions={{ hideAttribution: true }}
+                  nodesDraggable={false}
+                  nodesConnectable={false}
+                  elementsSelectable={false}
                 >
-                  {/* Connector Line */}
-                  {idx > 0 && <div className="tree-connector-line" />}
+                  <Background color="#eaeaea" gap={24} size={1} />
+                  <Controls showInteractive={false} />
+                </ReactFlow>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
-                  {/* Node Circle */}
-                  <div className={`tree-node-circle ${c.status}`} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                    {c.status === "base" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />}
-                    {c.status === "dev" && <IconCheck size={10} />}
-                    {c.status === "candidate" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />}
-                    {c.status === "merged" && <IconSparkles size={10} />}
-                  </div>
+      {/* Tab 2: Git Tree DAG */}
+      {activeDetailTab === "git" && (
+        <section className="git-tree-section">
+          <div className="git-tree-header">
+            <div className="tree-header-info">
+              <span className="section-title">Git 分支演进树 (Tree Graph)</span>
+              <small className="section-sub">
+                鼠标悬停节点可查看 Commit 详细内容与受控文件，点击节点可直接跳转至代码 Diff。
+              </small>
+            </div>
+            <div className="branch-pills-row">
+              <span className="branch-tag main" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <IconGitBranch size={12} />
+                <span>main (基准)</span>
+              </span>
+              <span className="branch-arrow" style={{ display: "inline-flex", alignItems: "center" }}>
+                <IconChevronRight size={12} />
+              </span>
+              <span className="branch-tag worktree" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <IconGitBranch size={12} />
+                <span>{branchName} (隔离工作区)</span>
+              </span>
+            </div>
+          </div>
 
-                  {/* Node Text Info */}
-                  <div className="tree-node-label">
-                    <span className="tree-sha">{c.shortSha}</span>
-                    <span className="tree-summary">{c.message.slice(0, 14)}…</span>
-                  </div>
+          <div className="git-tree-body">
+            <div className="git-tree-dag">
+              {treeNodes.map((c, idx) => {
+                const isHovered = hoveredCommit?.id === c.id;
+                const isSelected = selectedCommit?.id === c.id;
 
-                  {/* Floating Popover on Hover */}
-                  {isHovered && (
-                    <div className="tree-hover-popover">
-                      <div className="popover-header">
-                        <span className="popover-sha" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                          <IconTag size={11} />
-                          <span>{c.sha}</span>
-                        </span>
-                        <span className={`apple-pill ${c.status === "merged" ? "succeeded" : "running"}`}>
-                          {c.branch}
-                        </span>
-                      </div>
-                      <div className="popover-message">{c.message}</div>
-                      <div className="popover-meta">
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                          <IconUser size={11} />
-                          <span>提交人：{c.author}</span>
-                        </span>
-                        <span>时间：{c.timestamp}</span>
-                      </div>
-                      <div className="popover-files">
-                        <strong>受控文件：</strong>
-                        {c.controlledFiles.map((f, i) => (
-                          <span key={i} className="file-chip">
-                            {f}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="popover-tip">点击以在下方比对代码 Diff</div>
+                return (
+                  <div
+                    key={c.id}
+                    className={`git-tree-node-wrapper ${isSelected ? "selected" : ""}`}
+                    onMouseEnter={() => setHoveredCommit(c)}
+                    onMouseLeave={() => setHoveredCommit(null)}
+                    onClick={() => void handleSelectCommit(c)}
+                  >
+                    {idx > 0 && <div className="tree-connector-line" />}
+                    <div className={`tree-node-circle ${c.status}`} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                      {c.status === "base" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />}
+                      {c.status === "dev" && <IconCheck size={10} />}
+                      {c.status === "candidate" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />}
+                      {c.status === "merged" && <IconSparkles size={10} />}
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
 
-      {/* Lower Half: Execution Status Breakdown */}
-      <section className="status-breakdown-section">
-        <div className="section-title-bar">
-          <h2>当前执行状态</h2>
-          <small>
-            Attempt #{detail.attemptNumber ?? "-"} ·{" "}
-            {snapshot ? `第 ${snapshot.flow.iteration} 轮迭代 · 已用 ${snapshot.flow.actionsUsed} 步` : "独立单步"}
-          </small>
-        </div>
+                    <div className="tree-node-label">
+                      <span className="tree-sha">{c.shortSha}</span>
+                      <span className="tree-summary">{c.message.slice(0, 14)}…</span>
+                    </div>
 
-        <div className="status-cards-grid">
-          {/* 1. 已完成什么 */}
-          <div className="status-card">
-            <div className="card-header">
-              <span className="card-badge green" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                <IconCheck size={11} />
-                <span>已完成内容</span>
-              </span>
-            </div>
-            <ul className="status-list">
-              <li>
-                <strong>创建任务与资源锁定：</strong>
-                <span>任务已原子入库，获取工作区隔离环境。</span>
-              </li>
-              {checkpoints.map((cp, idx) => (
-                <li key={cp.checkpointId}>
-                  <strong>Checkpoint #{idx + 1}：</strong>
-                  <span>
-                    代码已提交 (Commit: <code>{cp.commitSha.slice(0, 7)}</code>)
-                  </span>
-                </li>
-              ))}
-              {snapshot?.flow.testHistory
-                .filter((t) => t.status === "passed")
-                .map((t, idx) => (
-                  <li key={idx}>
-                    <strong>自动化测试通过：</strong>
-                    <span>{t.summary}</span>
-                  </li>
-                ))}
-              {snapshot?.flow.reviewHistory
-                .filter((r) => r.verdict === "approved")
-                .map((r, idx) => (
-                  <li key={idx}>
-                    <strong>代码审查批准：</strong>
-                    <span>{r.summary}</span>
-                  </li>
-                ))}
-              {detail.runState === "succeeded" && (
-                <li style={{ color: "#24a159" }}>
-                  <strong>最终交付：</strong>
-                  <span>任务已全部完成并通过验证。</span>
-                </li>
-              )}
-            </ul>
-          </div>
-
-          {/* 2. 下一步需要执行什么 */}
-          <div className="status-card">
-            <div className="card-header">
-              <span className="card-badge blue">→ 下一步计划</span>
-            </div>
-            <div className="status-content">
-              {detail.runState === "queued" && (
-                <p>等待本地调度器分配并发通道并启动 Runner 进程…</p>
-              )}
-              {detail.runState === "running" && (
-                <p>
-                  当前处于【{phase === "analysis" ? "需求分析" : phase === "development" ? "代码生成" : phase === "tests" ? "测试运行" : phase === "review" ? "代码审查" : "执行中"}】阶段，Runner 正在执行子命令并写入输出日志。
-                </p>
-              )}
-              {isWaitingApproval && (
-                <p>所有测试与 Review 已就绪，等待人工确认当前 Checkpoint 代码快照是否准予交付。</p>
-              )}
-              {detail.runState === "succeeded" && (
-                <p>所有步骤已顺利结束，无需进一步操作。可随时重新运行。</p>
-              )}
-              {detail.runState === "failed" && (
-                <p>任务在当前步骤中断，可检查右侧阻塞原因后选择重试。</p>
-              )}
-              {detail.runState === "cancelled" && (
-                <p>执行已被用户取消，资源锁已释放。</p>
-              )}
-            </div>
-          </div>
-
-          {/* 3. 阻塞时，哪里有问题 */}
-          <div className={`status-card ${hasBlockers ? "alert" : ""}`}>
-            <div className="card-header">
-              <span className={`card-badge ${hasBlockers ? "red" : "gray"}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                {hasBlockers ? (
-                  <>
-                    <IconAlertTriangle size={12} />
-                    <span>阻塞与异常诊断</span>
-                  </>
-                ) : (
-                  <span>无阻塞</span>
-                )}
-              </span>
-            </div>
-            <div className="status-content">
-              {!hasBlockers && (
-                <p style={{ color: "#86868b" }}>执行通畅，无阻塞或异常告警。</p>
-              )}
-
-              {detail.waitingReason && (
-                <p className="blocker-text">
-                  <strong>阻塞原因：</strong>
-                  {detail.waitingReason}
-                </p>
-              )}
-
-              {isWaitingApproval && (
-                <div className="approval-action-box">
-                  <p>
-                    <strong>待审批候选版本：</strong>
-                    <code>{snapshot?.flow.candidateCommit?.slice(0, 10)}</code>
-                  </p>
-                  <textarea
-                    rows={2}
-                    placeholder="审批批注（若要求修改返工时建议填写）…"
-                    value={approvalComment}
-                    onChange={(e) => setApprovalComment(e.target.value)}
-                  />
-                  <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
-                    <button
-                      className="apple-btn-primary"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void handleApproval("approved")}
-                    >
-                      批准通过
-                    </button>
-                    <button
-                      className="apple-btn-secondary"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void handleApproval("rejected")}
-                    >
-                      要求修改返工
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {detail.errorCode && (
-                <p className="blocker-text">
-                  <strong>错误码：</strong>
-                  <code>{detail.errorCode}</code>
-                </p>
-              )}
-
-              {snapshot?.flow.reviewHistory.some(
-                (r) => r.verdict === "changes_requested"
-              ) &&
-                phase !== "completed" && (
-                  <div className="review-findings-box">
-                    <strong>Review 提出的问题：</strong>
-                    {snapshot.flow.reviewHistory
-                      .flatMap((r) => r.findings)
-                      .slice(0, 3)
-                      .map((f, i) => (
-                        <div key={i} className="finding-item">
-                          [{f.severity}] {f.file}:{f.line} - {f.message}
+                    {isHovered && (
+                      <div className="tree-hover-popover">
+                        <div className="popover-header">
+                          <span className="popover-sha" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <IconTag size={11} />
+                            <span>{c.sha}</span>
+                          </span>
+                          <span className={`apple-pill ${c.status === "merged" ? "succeeded" : "running"}`}>
+                            {c.branch}
+                          </span>
                         </div>
-                      ))}
+                        <div className="popover-message">{c.message}</div>
+                        <div className="popover-meta">
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <IconUser size={11} />
+                            <span>提交人：{c.author}</span>
+                          </span>
+                          <span>时间：{c.timestamp}</span>
+                        </div>
+                        <div className="popover-files">
+                          <strong>受控文件：</strong>
+                          {c.controlledFiles.map((f, i) => (
+                            <span key={i} className="file-chip">
+                              {f}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="popover-tip">点击节点直接查看代码 Diff →</div>
+                      </div>
+                    )}
                   </div>
-                )}
+                );
+              })}
             </div>
           </div>
-        </div>
+        </section>
+      )}
 
-        {/* Evidence Inspector: Git Diff & Historical Commit Logs & Stdio Logs */}
-        <div className="evidence-inspector-card" style={{ marginTop: "20px" }}>
+      {/* Tab 3: Code Diff */}
+      {activeDetailTab === "diff" && (
+        <section className="evidence-inspector-card">
+          <div className="diff-header-bar">
+            <div className="diff-title-wrap">
+              <span className="section-title">Git Checkpoint 代码变更 (Diff)</span>
+              <small className="section-sub">
+                {selectedCommit ? `正在对比 Commit: ${selectedCommit.shortSha} · ${selectedCommit.message}` : "显示当前 Checkpoint 变更"}
+              </small>
+            </div>
+            {treeNodes.length > 1 && (
+              <div className="diff-commit-selector">
+                <span style={{ fontSize: "11px", color: "#86868b" }}>切换 Commit:</span>
+                <select
+                  value={selectedCommit?.id || ""}
+                  onChange={(e) => {
+                    const target = treeNodes.find((n) => n.id === e.target.value);
+                    if (target) void handleSelectCommit(target);
+                  }}
+                >
+                  {treeNodes.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.shortSha} - {n.message.slice(0, 24)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="diff-view-container">
+            {diffText ? (
+              <pre className="apple-code-block">
+                {diffText.split("\n").map((line, idx) => {
+                  let cls = "line";
+                  if (line.startsWith("+") && !line.startsWith("+++")) cls += " add";
+                  else if (line.startsWith("-") && !line.startsWith("---")) cls += " del";
+                  else if (line.startsWith("@@")) cls += " meta";
+                  return (
+                    <div key={idx} className={cls}>
+                      {line}
+                    </div>
+                  );
+                })}
+              </pre>
+            ) : (
+              <div className="diff-empty-state">
+                <p>暂无代码变动 Diff。在「Git 演进树」中点击任一 Checkpoint 节点以载入代码对比。</p>
+                <button
+                  type="button"
+                  className="apple-btn-secondary"
+                  onClick={() => setActiveDetailTab("git")}
+                >
+                  前往 Git 演进树
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Tab 4: Runner Logs */}
+      {activeDetailTab === "logs" && (
+        <section className="evidence-inspector-card">
           <div className="evidence-tab-bar">
-            <button
-              type="button"
-              className={activeLogTab === "diff" ? "active" : ""}
-              onClick={() => setActiveLogTab("diff")}
-            >
-              Git Checkpoint 代码 Diff
-            </button>
-            <button
-              type="button"
-              className={activeLogTab === "commit_logs" ? "active" : ""}
-              onClick={() => setActiveLogTab("commit_logs")}
-            >
-              历史提交日志 ({treeNodes.length})
-            </button>
             <button
               type="button"
               className={activeLogTab === "stdout" ? "active" : ""}
               onClick={() => setActiveLogTab("stdout")}
             >
-              Runner 终端日志 (stdout)
+              标准输出日志 (stdout)
             </button>
             <button
               type="button"
               className={activeLogTab === "stderr" ? "active" : ""}
               onClick={() => setActiveLogTab("stderr")}
             >
-              错误日志 (stderr)
+              异常与错误日志 (stderr)
+              {logs?.stderr && <span className="tab-dot-error" />}
             </button>
           </div>
 
           <div className="evidence-panel-content">
-            {activeLogTab === "diff" && (
-              <div className="diff-view-container">
-                {diffText ? (
-                  <pre className="apple-code-block">
-                    {diffText.split("\n").map((line, idx) => {
-                      let cls = "line";
-                      if (line.startsWith("+") && !line.startsWith("+++")) cls += " add";
-                      else if (line.startsWith("-") && !line.startsWith("---")) cls += " del";
-                      else if (line.startsWith("@@")) cls += " meta";
-                      return (
-                        <div key={idx} className={cls}>
-                          {line}
-                        </div>
-                      );
-                    })}
-                  </pre>
-                ) : (
-                  <p style={{ padding: "20px", color: "#86868b", textAlign: "center" }}>
-                    暂无代码变动 Diff，在上方 Git 分支树中点击任一 Checkpoint 节点以载入。
-                  </p>
-                )}
-              </div>
-            )}
-
-            {activeLogTab === "commit_logs" && (
-              <div className="commit-history-list">
-                {treeNodes.map((c) => (
-                  <div key={c.id} className="commit-history-row">
-                    <div className="commit-row-left">
-                      <span className="commit-row-sha"><code>{c.shortSha}</code></span>
-                      <div className="commit-row-info">
-                        <strong>{c.message}</strong>
-                        <span className="commit-row-meta">
-                          分支：{c.branch} · 提交人：{c.author} · 时间：{c.timestamp}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="commit-row-actions">
-                      {c.checkpointId && (
-                        <button
-                          type="button"
-                          className="apple-btn-secondary"
-                          style={{ fontSize: "11px", padding: "4px 8px" }}
-                          onClick={() => void handleSelectCommit(c)}
-                        >
-                          查看此 Commit Diff
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
             {activeLogTab === "stdout" && (
               <pre className="apple-code-block terminal">
                 {logs?.stdout || "(尚未捕获到标准输出日志)"}
@@ -1158,13 +1172,155 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
             )}
 
             {activeLogTab === "stderr" && (
-              <pre className="apple-code-block terminal" style={{ color: "#cf222e" }}>
+              <pre className="apple-code-block terminal" style={{ color: "#fca5a5" }}>
                 {logs?.stderr || "(无异常输出日志)"}
               </pre>
             )}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
+
+      {/* Tab 5: Status & Audit Breakdown */}
+      {activeDetailTab === "status" && (
+        <section className="status-breakdown-section">
+          <div className="section-title-bar">
+            <h2>执行状态与交付审计</h2>
+            <small>
+              Attempt #{detail.attemptNumber ?? "-"} ·{" "}
+              {snapshot ? `第 ${snapshot.flow.iteration} 轮迭代 · 已用 ${snapshot.flow.actionsUsed} 步` : "单步运行"}
+            </small>
+          </div>
+
+          <div className="status-cards-grid">
+            {/* 1. 已完成什么 */}
+            <div className="status-card">
+              <div className="card-header">
+                <span className="card-badge green" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <IconCheck size={11} />
+                  <span>已完成内容</span>
+                </span>
+              </div>
+              <ul className="status-list">
+                <li>
+                  <strong>创建任务与资源锁定：</strong>
+                  <span>任务已原子入库，获取工作区隔离环境。</span>
+                </li>
+                {checkpoints.map((cp, idx) => (
+                  <li key={cp.checkpointId}>
+                    <strong>Checkpoint #{idx + 1}：</strong>
+                    <span>
+                      代码已提交 (Commit: <code>{cp.commitSha.slice(0, 7)}</code>)
+                    </span>
+                  </li>
+                ))}
+                {snapshot?.flow.testHistory
+                  .filter((t) => t.status === "passed")
+                  .map((t, idx) => (
+                    <li key={idx}>
+                      <strong>自动化测试通过：</strong>
+                      <span>{t.summary}</span>
+                    </li>
+                  ))}
+                {snapshot?.flow.reviewHistory
+                  .filter((r) => r.verdict === "approved")
+                  .map((r, idx) => (
+                    <li key={idx}>
+                      <strong>代码审查批准：</strong>
+                      <span>{r.summary}</span>
+                    </li>
+                  ))}
+                {detail.runState === "succeeded" && (
+                  <li style={{ color: "#22c55e" }}>
+                    <strong>最终交付：</strong>
+                    <span>任务已全部完成并通过验收标准。</span>
+                  </li>
+                )}
+              </ul>
+            </div>
+
+            {/* 2. 下一步需要执行什么 */}
+            <div className="status-card">
+              <div className="card-header">
+                <span className="card-badge blue">→ 下一步计划</span>
+              </div>
+              <div className="status-content">
+                {detail.runState === "queued" && (
+                  <p>等待本地调度器分配并发通道并启动 Runner 进程…</p>
+                )}
+                {detail.runState === "running" && (
+                  <p>
+                    当前处于【{phase === "analysis" ? "需求分析" : phase === "development" ? "代码生成" : phase === "tests" ? "测试运行" : phase === "review" ? "代码审查" : "执行中"}】阶段，Runner 正在执行子命令并写入输出日志。
+                  </p>
+                )}
+                {isWaitingApproval && (
+                  <p>所有测试与 Review 已就绪，等待人工确认当前 Checkpoint 代码快照是否准予交付。</p>
+                )}
+                {detail.runState === "succeeded" && (
+                  <p>所有步骤已顺利结束，无需进一步操作。可随时重新运行。</p>
+                )}
+                {detail.runState === "failed" && (
+                  <p>任务在当前步骤中断，可检查右侧阻塞原因后选择重试。</p>
+                )}
+                {detail.runState === "cancelled" && (
+                  <p>执行已被用户取消，资源锁已释放。</p>
+                )}
+              </div>
+            </div>
+
+            {/* 3. 阻塞与诊断 */}
+            <div className={`status-card ${hasBlockers ? "alert" : ""}`}>
+              <div className="card-header">
+                <span className={`card-badge ${hasBlockers ? "red" : "gray"}`} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  {hasBlockers ? (
+                    <>
+                      <IconAlertTriangle size={12} />
+                      <span>阻塞与异常诊断</span>
+                    </>
+                  ) : (
+                    <span>无阻塞</span>
+                  )}
+                </span>
+              </div>
+              <div className="status-content">
+                {!hasBlockers && (
+                  <p style={{ color: "#86868b" }}>执行通畅，无阻塞或异常告警。</p>
+                )}
+
+                {detail.waitingReason && (
+                  <p className="blocker-text">
+                    <strong>阻塞原因：</strong>
+                    {detail.waitingReason}
+                  </p>
+                )}
+
+                {detail.errorCode && (
+                  <p className="blocker-text">
+                    <strong>错误码：</strong>
+                    <code>{detail.errorCode}</code>
+                  </p>
+                )}
+
+                {snapshot?.flow.reviewHistory.some(
+                  (r) => r.verdict === "changes_requested"
+                ) &&
+                  phase !== "completed" && (
+                    <div className="review-findings-box">
+                      <strong>Review 提出的问题：</strong>
+                      {snapshot.flow.reviewHistory
+                        .flatMap((r) => r.findings)
+                        .slice(0, 3)
+                        .map((f, i) => (
+                          <div key={i} className="finding-item">
+                            [{f.severity}] {f.file}:{f.line} - {f.message}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Modal: Add Node to Mind Map */}
       {showAddNodeModal && (
@@ -1211,10 +1367,10 @@ export function TaskDetailView({ runId, onBack, onRefreshList }: Props) {
                     value={newNodeModel}
                     onChange={(val) => setNewNodeModel(val)}
                     options={[
-                      { value: "Claude 3.5 Sonnet", label: "Claude 3.5 Sonnet", description: "高精度代码编写与长上下文" },
-                      { value: "GPT-4o", label: "GPT-4o", description: "全能多模态与通用推理" },
-                      { value: "DeepSeek-R1", label: "DeepSeek-R1", description: "深度思维链与架构决策" },
-                      { value: "本地仿真模型", label: "本地仿真模型", description: "Mock Agent 独立隔离沙箱" },
+                      { value: "Google agy (账号 1)", label: "Google agy (账号 1)", description: "本地主账号 · 复杂架构与规划" },
+                      { value: "Google agy (账号 2)", label: "Google agy (账号 2)", description: "独立会话隔离 · 代码审查与审计" },
+                      { value: "Google agy (账号 3)", label: "Google agy (账号 3)", description: "独立会话隔离 · 测试验收与排障" },
+                      { value: "OpenAI Codex CLI (codex)", label: "OpenAI Codex CLI (codex)", description: "本地 Codex 自动化代码重构" },
                     ]}
                   />
                 </label>

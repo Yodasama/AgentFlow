@@ -6,6 +6,7 @@ import {
   addWorkspace,
   removeWorkspace,
 } from "./workspaces";
+import { confirmDelete } from "./confirmDelete";
 import { IconFolder, IconClose } from "./icons";
 
 interface Props {
@@ -42,6 +43,8 @@ export function WorkspaceModal({ activeWorkspace, onSelectWorkspace, onClose }: 
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const workspace = workspaces.find((item) => item.id === id);
+    if (!confirmDelete(`工作区“${workspace?.name || "未命名"}”`)) return;
     const updated = removeWorkspace(id);
     setWorkspaces(updated);
     if (activeWorkspace.id === id) {

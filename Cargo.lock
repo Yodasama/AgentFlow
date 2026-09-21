@@ -13,9 +13,12 @@ name = "agentflow-app"
 version = "0.1.0"
 dependencies = [
  "agentflow-core",
+ "chrono",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
+ "tempfile",
  "uuid",
 ]
 

@@ -170,6 +170,7 @@ pub struct CreateMockTaskRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RunSummary {
+    pub workflow_kind: Option<String>,
     pub run_id: Uuid,
     pub task_id: Uuid,
     pub title: String,

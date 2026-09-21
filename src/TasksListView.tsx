@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import {
-  createMockDevelopmentTask,
+  createTaskWorkflowDraft,
   createMockTask,
   listGoals,
   type RunSummary,
@@ -25,6 +25,13 @@ const stateLabels: Record<RunState, string> = {
   failed: "执行失败",
   cancelled: "已取消",
 };
+
+function runStateLabel(run: RunSummary): string {
+  if (run.workflowKind === "task_workflow" && run.runState === "waiting_input" && !run.attemptState) {
+    return "编辑工作流";
+  }
+  return stateLabels[run.runState];
+}
 
 export const TASK_PROJECT_LINKS_KEY = "agentflow_task_project_links_v1";
 
@@ -86,15 +93,11 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
     try {
       let createdRunId = "";
       if (taskMode === "development") {
-        const created = await createMockDevelopmentTask(
-          {
-            title: title.trim(),
-            description: description.trim() || "自动化开发与审查闭环任务",
-            acceptanceCriteria: ["测试通过", "审查批准", "Checkpoint 提交"],
-          },
-          repositoryPath.trim() || "/Users/yida/项目/TaskBoard",
-          "test_then_review_retry"
-        );
+        const created = await createTaskWorkflowDraft({
+          title: title.trim(),
+          description: description.trim() || "按任务工作流执行",
+          acceptanceCriteria: ["按工作流完成全部节点"],
+        });
         createdRunId = created.runId;
       } else {
         const created = await createMockTask({
@@ -178,9 +181,7 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
       <div className="page-header-row">
         <div>
           <h1>任务列表</h1>
-          <p className="page-subtitle">
-            查看全部执行任务。支持独立轻量任务与立项拆解任务的分类管理，点击可进入脑图工作流与执行详情。
-          </p>
+          <p className="page-subtitle">创建任务，查看执行状态与工作流。</p>
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <input
@@ -309,7 +310,7 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
 
                     <td className="col-status" style={{ textAlign: "right" }}>
                       <span className={`apple-pill ${run.runState}`}>
-                        {stateLabels[run.runState]}
+                        {runStateLabel(run)}
                       </span>
                     </td>
                   </tr>
@@ -372,15 +373,15 @@ export function TasksListView({ runs, onSelectRun, onRefresh, busy }: Props) {
                   options={[
                     {
                       value: "development",
-                      label: "标准开发闭环",
-                      description: "需求分析、代码编写、单元测试与代码审查全套闭环流程",
+                      label: "使用工作流",
+                      description: "创建后进入任务详情，编辑节点和连线，再确认启动",
                       icon: <IconSparkles size={13} stroke="#787774" />,
                       badge: "推荐",
                     },
                     {
                       value: "single",
-                      label: "快速单步运行",
-                      description: "极速模式，直接执行指定命令或轻量仿真脚本",
+                      label: "直接执行",
+                      description: "不创建画布，按单步任务直接运行",
                       icon: <IconZap size={13} stroke="#787774" />,
                     },
                   ]}

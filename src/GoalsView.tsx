@@ -6,6 +6,7 @@ import {
   deleteGoal,
   type GoalRecord,
 } from "./api";
+import { confirmDelete } from "./confirmDelete";
 
 export function GoalsView() {
   const [goals, setGoals] = useState<GoalRecord[]>([]);
@@ -43,6 +44,8 @@ export function GoalsView() {
   };
 
   const handleDeleteGoal = async (id: string) => {
+    const goal = goals.find((item) => item.id === id);
+    if (!confirmDelete(`长期目标“${goal?.title || "未命名"}”`)) return;
     setBusy(true);
     try {
       await deleteGoal(id);

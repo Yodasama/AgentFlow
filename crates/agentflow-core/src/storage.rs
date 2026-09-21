@@ -20,7 +20,10 @@ use crate::{
     development_flow::{ApprovalDecision, ApprovalRecord, DevelopmentLoop, DevelopmentPhase},
     development_runtime::MockDevelopmentExecution,
     protocol::{LaunchManifest, RUNNER_PROTOCOL_VERSION},
-    workflow::{WorkflowDefinition, WorkflowVersionRecord, validate_workflow, workflow_digest},
+    workflow::{
+        NodeKind, TaskWorkflowExecutionState, TaskWorkflowRecord, WorkflowCursor,
+        WorkflowDefinition, WorkflowVersionRecord, validate_workflow, workflow_digest,
+    },
     workflow_run::{
         CreateDevelopmentRunRequest, DevelopmentRunSnapshot, NodeLaunchSpec,
         WorkflowStepTransition, pending_step,
@@ -247,6 +250,45 @@ CREATE TABLE milestones (
 CREATE INDEX milestones_goal_index ON milestones(goal_id, sort_order);
 "#;
 
+const MIGRATION_6: &str = r#"
+CREATE TABLE cli_usage_records (
+    id TEXT PRIMARY KEY NOT NULL,
+    provider_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL CHECK (input_tokens >= 0),
+    output_tokens INTEGER NOT NULL CHECK (output_tokens >= 0),
+    thinking_tokens INTEGER NOT NULL CHECK (thinking_tokens >= 0),
+    cache_read_tokens INTEGER NOT NULL CHECK (cache_read_tokens >= 0),
+    total_tokens INTEGER NOT NULL CHECK (total_tokens >= 0),
+    created_at TEXT NOT NULL
+) STRICT;
+CREATE INDEX cli_usage_provider_created_index ON cli_usage_records(provider_id, created_at DESC);
+"#;
+
+const MIGRATION_7: &str = r#"
+CREATE TABLE task_workflows (
+    run_id TEXT PRIMARY KEY NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    definition_json TEXT NOT NULL,
+    layout_json TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    status TEXT NOT NULL CHECK (status IN ('draft', 'published')),
+    workflow_version_id TEXT REFERENCES workflow_versions(id),
+    updated_at TEXT NOT NULL
+) STRICT;
+"#;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliUsageRecord {
+    pub provider_id: String,
+    pub model: String,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub thinking_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub total_tokens: u64,
+    pub created_at: String,
+}
+
 #[derive(Debug, Error)]
 pub enum StorageError {
     #[error("database error: {0}")]
@@ -281,7 +323,68 @@ pub struct Storage {
     connection: Connection,
 }
 
+#[derive(Debug, Clone)]
+pub struct TaskWorkflowStepSnapshot {
+    pub step_id: Uuid,
+    pub step_state: StepExecutionState,
+    pub attempt_id: Option<Uuid>,
+    pub attempt_state: Option<AttemptState>,
+    pub result: Option<serde_json::Value>,
+}
+
 impl Storage {
+    pub fn record_cli_usage(&self, usage: &CliUsageRecord) -> Result<(), StorageError> {
+        let input_tokens = i64::try_from(usage.input_tokens)
+            .map_err(|_| StorageError::IntegerOutOfRange(usage.input_tokens))?;
+        let output_tokens = i64::try_from(usage.output_tokens)
+            .map_err(|_| StorageError::IntegerOutOfRange(usage.output_tokens))?;
+        let thinking_tokens = i64::try_from(usage.thinking_tokens)
+            .map_err(|_| StorageError::IntegerOutOfRange(usage.thinking_tokens))?;
+        let cache_read_tokens = i64::try_from(usage.cache_read_tokens)
+            .map_err(|_| StorageError::IntegerOutOfRange(usage.cache_read_tokens))?;
+        let total_tokens = i64::try_from(usage.total_tokens)
+            .map_err(|_| StorageError::IntegerOutOfRange(usage.total_tokens))?;
+        self.connection.execute(
+            "INSERT INTO cli_usage_records(
+                id, provider_id, model, input_tokens, output_tokens,
+                thinking_tokens, cache_read_tokens, total_tokens, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                Uuid::new_v4().to_string(),
+                usage.provider_id,
+                usage.model,
+                input_tokens,
+                output_tokens,
+                thinking_tokens,
+                cache_read_tokens,
+                total_tokens,
+                usage.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_cli_usage(&self) -> Result<Vec<CliUsageRecord>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT provider_id, model, input_tokens, output_tokens, thinking_tokens,
+                    cache_read_tokens, total_tokens, created_at
+             FROM cli_usage_records ORDER BY created_at DESC",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(CliUsageRecord {
+                provider_id: row.get(0)?,
+                model: row.get(1)?,
+                input_tokens: row.get::<_, i64>(2)? as u64,
+                output_tokens: row.get::<_, i64>(3)? as u64,
+                thinking_tokens: row.get::<_, i64>(4)? as u64,
+                cache_read_tokens: row.get::<_, i64>(5)? as u64,
+                total_tokens: row.get::<_, i64>(6)? as u64,
+                created_at: row.get(7)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     pub fn open(path: &Path) -> Result<Self, StorageError> {
         let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
             | OpenFlags::SQLITE_OPEN_CREATE
@@ -1251,6 +1354,574 @@ impl Storage {
         Ok(versions)
     }
 
+    pub fn create_task_workflow_draft(
+        &mut self,
+        request: CreateDevelopmentRunRequest,
+        definition: &WorkflowDefinition,
+        layout: serde_json::Value,
+    ) -> Result<RunDetail, StorageError> {
+        let title = request.title.trim();
+        let description = request.description.trim();
+        if title.is_empty() || description.is_empty() {
+            return Err(StorageError::InvalidTask);
+        }
+        let task_id = Uuid::new_v4();
+        let run_id = Uuid::new_v4();
+        let step_id = Uuid::new_v4();
+        let now = timestamp();
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
+            "INSERT INTO tasks(id, title, description, acceptance_criteria_json, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                task_id.to_string(),
+                title,
+                description,
+                serde_json::to_string(&request.acceptance_criteria)?,
+                now,
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO runs(id, task_id, trigger_source, config_snapshot_json,
+                workflow_snapshot_json, state, waiting_reason, created_at)
+             VALUES (?1, ?2, 'manual', ?3, ?4, 'waiting_input', ?5, ?6)",
+            params![
+                run_id.to_string(),
+                task_id.to_string(),
+                json!({"kind":"task_workflow","workflowStarted":false}).to_string(),
+                serde_json::to_string(definition)?,
+                "编辑并确认任务工作流后启动",
+                now,
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO step_executions(id, run_id, node_id, iteration_key, state, created_at)
+             VALUES (?1, ?2, '__workflow_draft__', 'draft', 'pending', ?3)",
+            params![step_id.to_string(), run_id.to_string(), now],
+        )?;
+        tx.execute(
+            "INSERT INTO task_workflows(run_id, definition_json, layout_json, revision,
+                status, workflow_version_id, updated_at)
+             VALUES (?1, ?2, ?3, 1, 'draft', NULL, ?4)",
+            params![
+                run_id.to_string(),
+                serde_json::to_string(definition)?,
+                serde_json::to_string(&layout)?,
+                now,
+            ],
+        )?;
+        insert_event(
+            &tx,
+            run_id,
+            None,
+            "run_created",
+            json!({"state":RunState::WaitingInput,"kind":"task_workflow"}),
+            None,
+        )?;
+        tx.commit()?;
+        self.get_run(run_id)
+    }
+
+    pub fn task_workflow(&self, run_id: Uuid) -> Result<TaskWorkflowRecord, StorageError> {
+        self.connection
+            .query_row(
+                "SELECT definition_json, layout_json, revision, status, workflow_version_id
+                 FROM task_workflows WHERE run_id = ?1",
+                [run_id.to_string()],
+                |row| {
+                    let definition = row.get::<_, String>(0)?;
+                    let layout = row.get::<_, String>(1)?;
+                    let workflow_version = row.get::<_, Option<String>>(4)?;
+                    Ok((definition, layout, row.get::<_, u32>(2)?, row.get::<_, String>(3)?, workflow_version))
+                },
+            )
+            .optional()?
+            .map(|(definition, layout, revision, status, workflow_version)| -> Result<TaskWorkflowRecord, StorageError> {
+                Ok(TaskWorkflowRecord {
+                    run_id,
+                    definition: serde_json::from_str(&definition)?,
+                    layout: serde_json::from_str(&layout)?,
+                    revision,
+                    status,
+                    workflow_version_id: workflow_version
+                        .map(|value| parse_uuid("workflow version", &value))
+                        .transpose()?,
+                })
+            })
+            .transpose()?
+            .ok_or(StorageError::NotFound { entity: "task workflow", id: run_id })
+    }
+
+    pub fn save_task_workflow(
+        &mut self,
+        run_id: Uuid,
+        definition: &WorkflowDefinition,
+        layout: serde_json::Value,
+    ) -> Result<TaskWorkflowRecord, StorageError> {
+        let changed = self.connection.execute(
+            "UPDATE task_workflows
+             SET definition_json = ?1, layout_json = ?2, revision = revision + 1, updated_at = ?3
+             WHERE run_id = ?4 AND status = 'draft'",
+            params![
+                serde_json::to_string(definition)?,
+                serde_json::to_string(&layout)?,
+                timestamp(),
+                run_id.to_string(),
+            ],
+        )?;
+        if changed != 1 {
+            return Err(StorageError::InvalidWorkflow(
+                "started workflows are immutable".to_owned(),
+            ));
+        }
+        self.task_workflow(run_id)
+    }
+
+    pub fn start_task_workflow(
+        &mut self,
+        run_id: Uuid,
+    ) -> Result<TaskWorkflowRecord, StorageError> {
+        let draft = self.task_workflow(run_id)?;
+        if draft.status != "draft" {
+            return Err(StorageError::InvalidWorkflow(
+                "workflow already started".to_owned(),
+            ));
+        }
+        let version = self.publish_workflow(&draft.definition)?;
+        let state = TaskWorkflowExecutionState {
+            cursor: WorkflowCursor::start(&draft.definition)
+                .map_err(|error| StorageError::InvalidWorkflow(error.to_string()))?,
+            facts: json!({}),
+        };
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let step_value: String = tx.query_row(
+            "SELECT id FROM step_executions WHERE run_id = ?1 AND node_id = '__workflow_draft__'",
+            [run_id.to_string()],
+            |row| row.get(0),
+        )?;
+        transition_step(
+            &tx,
+            run_id,
+            parse_uuid("step execution", &step_value)?,
+            StepExecutionState::Pending,
+            StepExecutionState::Skipped,
+        )?;
+        transition_run(&tx, run_id, RunState::WaitingInput, RunState::Running)?;
+        tx.execute(
+            "UPDATE runs SET config_snapshot_json = ?1, workflow_snapshot_json = ?2,
+                 waiting_reason = NULL WHERE id = ?3",
+            params![
+                json!({
+                    "kind":"task_workflow",
+                    "workflowStarted":true,
+                    "workflowVersionID":version.workflow_version_id,
+                    "workflowDigest":version.digest,
+                })
+                .to_string(),
+                serde_json::to_string(&draft.definition)?,
+                run_id.to_string(),
+            ],
+        )?;
+        tx.execute(
+            "UPDATE task_workflows SET status = 'published', workflow_version_id = ?1,
+                 updated_at = ?2 WHERE run_id = ?3 AND status = 'draft'",
+            params![
+                version.workflow_version_id.to_string(),
+                timestamp(),
+                run_id.to_string()
+            ],
+        )?;
+        insert_event(
+            &tx,
+            run_id,
+            None,
+            "task_workflow_state",
+            serde_json::to_value(state)?,
+            None,
+        )?;
+        tx.commit()?;
+        self.task_workflow(run_id)
+    }
+
+    pub fn running_task_workflows(
+        &self,
+    ) -> Result<Vec<(Uuid, WorkflowDefinition, TaskWorkflowExecutionState)>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT r.id, tw.definition_json,
+                (SELECT payload_json FROM events e WHERE e.run_id = r.id
+                 AND e.event_type = 'task_workflow_state' ORDER BY e.id DESC LIMIT 1)
+             FROM runs r JOIN task_workflows tw ON tw.run_id = r.id
+             WHERE r.state = 'running' AND tw.status = 'published'
+             ORDER BY r.created_at, r.id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        rows.map(|row| {
+            let (run, definition, state) = row?;
+            Ok((
+                parse_uuid("run", &run)?,
+                serde_json::from_str(&definition)?,
+                serde_json::from_str(&state)?,
+            ))
+        })
+        .collect()
+    }
+
+    pub fn task_workflow_step(
+        &self,
+        run_id: Uuid,
+        node_id: &str,
+        iteration_key: &str,
+    ) -> Result<Option<TaskWorkflowStepSnapshot>, StorageError> {
+        self.connection.query_row(
+            "SELECT s.id, s.state, a.id, a.state, a.result_json
+             FROM step_executions s
+             LEFT JOIN attempts a ON a.step_execution_id = s.id
+               AND a.attempt_number = (SELECT MAX(a2.attempt_number) FROM attempts a2 WHERE a2.step_execution_id = s.id)
+             WHERE s.run_id = ?1 AND s.node_id = ?2 AND s.iteration_key = ?3",
+            params![run_id.to_string(), node_id, iteration_key],
+            |row| Ok((
+                row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?, row.get::<_, Option<String>>(4)?,
+            )),
+        ).optional()?.map(|(step, step_state, attempt, attempt_state, result)| {
+            Ok(TaskWorkflowStepSnapshot {
+                step_id: parse_uuid("step execution", &step)?,
+                step_state: StepExecutionState::from_str(&step_state)?,
+                attempt_id: attempt.map(|value| parse_uuid("attempt", &value)).transpose()?,
+                attempt_state: attempt_state.map(|value| AttemptState::from_str(&value)).transpose()?,
+                result: result.map(|value| serde_json::from_str(&value)).transpose()?,
+            })
+        }).transpose()
+    }
+
+    pub fn ensure_task_workflow_step(
+        &mut self,
+        run_id: Uuid,
+        node_id: &str,
+        iteration_key: &str,
+        waiting: bool,
+    ) -> Result<(), StorageError> {
+        let step_id = Uuid::new_v4();
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let inserted = tx.execute(
+            "INSERT INTO step_executions(id, run_id, node_id, iteration_key, state, created_at)
+             VALUES (?1, ?2, ?3, ?4, 'pending', ?5)
+             ON CONFLICT(run_id, node_id, iteration_key) DO NOTHING",
+            params![
+                step_id.to_string(),
+                run_id.to_string(),
+                node_id,
+                iteration_key,
+                timestamp()
+            ],
+        )?;
+        if inserted == 1 && waiting {
+            transition_step(
+                &tx,
+                run_id,
+                step_id,
+                StepExecutionState::Pending,
+                StepExecutionState::Running,
+            )?;
+            transition_step(
+                &tx,
+                run_id,
+                step_id,
+                StepExecutionState::Running,
+                StepExecutionState::WaitingInput,
+            )?;
+            transition_run(&tx, run_id, RunState::Running, RunState::WaitingInput)?;
+            tx.execute(
+                "UPDATE runs SET waiting_reason = ?1 WHERE id = ?2",
+                params!["工作流等待人工确认", run_id.to_string()],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn persist_task_workflow_state(
+        &mut self,
+        run_id: Uuid,
+        state: &TaskWorkflowExecutionState,
+    ) -> Result<(), StorageError> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        insert_event(
+            &tx,
+            run_id,
+            None,
+            "task_workflow_state",
+            serde_json::to_value(state)?,
+            None,
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn consume_task_workflow_result(
+        &mut self,
+        run_id: Uuid,
+        step: &TaskWorkflowStepSnapshot,
+        state: &TaskWorkflowExecutionState,
+    ) -> Result<(), StorageError> {
+        let attempt_id = step.attempt_id.ok_or_else(|| {
+            StorageError::InvalidWorkflow("workflow result has no attempt".to_owned())
+        })?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transition_step(
+            &tx,
+            run_id,
+            step.step_id,
+            StepExecutionState::Running,
+            StepExecutionState::Succeeded,
+        )?;
+        tx.execute(
+            "DELETE FROM resource_locks WHERE attempt_id = ?1",
+            [attempt_id.to_string()],
+        )?;
+        insert_event(
+            &tx,
+            run_id,
+            Some(attempt_id),
+            "runner_result_imported",
+            json!({"attemptState":AttemptState::Succeeded,"locksReleased":true}),
+            None,
+        )?;
+        insert_event(
+            &tx,
+            run_id,
+            None,
+            "task_workflow_state",
+            serde_json::to_value(state)?,
+            None,
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn complete_task_workflow(&mut self, run_id: Uuid) -> Result<(), StorageError> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transition_run(&tx, run_id, RunState::Running, RunState::Succeeded)?;
+        insert_event(
+            &tx,
+            run_id,
+            None,
+            "task_workflow_completed",
+            json!({"state":RunState::Succeeded}),
+            None,
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn submit_task_workflow_approval(
+        &mut self,
+        run_id: Uuid,
+        approved: bool,
+    ) -> Result<TaskWorkflowRecord, StorageError> {
+        let workflow = self.task_workflow(run_id)?;
+        let state_json: String = self.connection.query_row(
+            "SELECT payload_json FROM events WHERE run_id = ?1 AND event_type = 'task_workflow_state'
+             ORDER BY id DESC LIMIT 1",
+            [run_id.to_string()], |row| row.get(0),
+        )?;
+        let mut state: TaskWorkflowExecutionState = serde_json::from_str(&state_json)?;
+        let node = workflow
+            .definition
+            .nodes
+            .iter()
+            .find(|node| {
+                node.id == state.cursor.current_node_id && node.kind == NodeKind::HumanApproval
+            })
+            .ok_or_else(|| {
+                StorageError::InvalidWorkflow("workflow is not waiting for approval".to_owned())
+            })?;
+        if !state.facts.is_object() {
+            state.facts = json!({});
+        }
+        state
+            .facts
+            .as_object_mut()
+            .expect("facts is object")
+            .insert(
+                "approval".to_owned(),
+                json!({"decision":if approved {"approved"} else {"rejected"}}),
+            );
+        state
+            .cursor
+            .advance(&workflow.definition, &state.facts)
+            .map_err(|error| StorageError::InvalidWorkflow(error.to_string()))?;
+        let iteration_key = format!("step-{}", state.cursor.steps_executed.saturating_sub(1));
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let step_value: String = tx.query_row(
+            "SELECT id FROM step_executions WHERE run_id = ?1 AND node_id = ?2 AND iteration_key = ?3",
+            params![run_id.to_string(), node.id, iteration_key], |row| row.get(0),
+        )?;
+        let step_id = parse_uuid("step execution", &step_value)?;
+        transition_step(
+            &tx,
+            run_id,
+            step_id,
+            StepExecutionState::WaitingInput,
+            StepExecutionState::Running,
+        )?;
+        transition_step(
+            &tx,
+            run_id,
+            step_id,
+            StepExecutionState::Running,
+            StepExecutionState::Succeeded,
+        )?;
+        transition_run(&tx, run_id, RunState::WaitingInput, RunState::Running)?;
+        tx.execute(
+            "UPDATE runs SET waiting_reason = NULL WHERE id = ?1",
+            [run_id.to_string()],
+        )?;
+        insert_event(
+            &tx,
+            run_id,
+            None,
+            "task_workflow_state",
+            serde_json::to_value(state)?,
+            None,
+        )?;
+        insert_event(
+            &tx,
+            run_id,
+            None,
+            "task_workflow_approval",
+            json!({"approved":approved}),
+            None,
+        )?;
+        tx.commit()?;
+        self.task_workflow(run_id)
+    }
+
+    pub fn prepare_task_workflow_attempt(
+        &mut self,
+        run_id: Uuid,
+        node_id: &str,
+        iteration_key: &str,
+        account: &str,
+        spec: &NodeLaunchSpec,
+        data_directory: &Path,
+        global_limit: u32,
+    ) -> Result<Option<PreparedAttempt>, StorageError> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let step: Option<String> = tx
+            .query_row(
+                "SELECT id FROM step_executions WHERE run_id = ?1 AND node_id = ?2
+             AND iteration_key = ?3 AND state = 'pending'",
+                params![run_id.to_string(), node_id, iteration_key],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(step) = step else {
+            return Ok(None);
+        };
+        let workspace_resource = spec.working_directory.to_str().ok_or_else(|| {
+            StorageError::InvalidWorkflow("workspace path is not UTF-8".to_owned())
+        })?;
+        let busy: bool = tx.query_row(
+            "SELECT (SELECT COUNT(*) FROM attempts WHERE state IN ('prepared','starting','running','finalizing')) >= ?1
+             OR EXISTS(SELECT 1 FROM resource_locks WHERE
+                (resource_type = 'account' AND resource_id = ?2)
+                OR (resource_type = 'workspace' AND resource_id = ?3))",
+            params![global_limit, account, workspace_resource], |row| row.get(0),
+        )?;
+        if busy {
+            return Ok(None);
+        }
+        let step_id = parse_uuid("step execution", &step)?;
+        let attempt_id = Uuid::new_v4();
+        let token = Uuid::new_v4().to_string();
+        let directory = data_directory
+            .join("runs")
+            .join(run_id.to_string())
+            .join("attempts")
+            .join(attempt_id.to_string());
+        let manifest = LaunchManifest {
+            schema_version: RUNNER_PROTOCOL_VERSION,
+            attempt_id,
+            execution_token: token.clone(),
+            executable_path: spec.executable_path.clone(),
+            arguments: spec.arguments.clone(),
+            working_directory: spec.working_directory.clone(),
+            environment: spec.environment.clone(),
+            stdout_path: directory.join("stdout.log"),
+            stderr_path: directory.join("stderr.log"),
+            identity_path: directory.join("identity.json"),
+            heartbeat_path: directory.join("heartbeat.json"),
+            cancellation_path: directory.join("control/cancel.json"),
+            result_path: directory.join("result.json"),
+            timeout_seconds: spec.timeout_seconds,
+            cancellation_grace_seconds: spec.cancellation_grace_seconds,
+        };
+        manifest
+            .validate()
+            .map_err(|error| StorageError::InvalidWorkflow(error.to_string()))?;
+        let encoded = serde_json::to_string(&manifest)?;
+        let digest = format!("{:x}", Sha256::digest(encoded.as_bytes()));
+        let now = timestamp();
+        tx.execute(
+            "INSERT INTO attempts(id, step_execution_id, attempt_number, requested_account_id,
+             actual_account_id, state, input_digest, runner_token, created_at)
+             VALUES (?1, ?2, 1, ?3, ?3, 'prepared', ?4, ?5, ?6)",
+            params![attempt_id.to_string(), step, account, digest, token, now],
+        )?;
+        for (kind, resource) in [("account", account), ("workspace", workspace_resource)] {
+            tx.execute("INSERT INTO resource_locks(resource_type, resource_id, attempt_id, acquired_at) VALUES (?1, ?2, ?3, ?4)",
+                params![kind, resource, attempt_id.to_string(), now])?;
+        }
+        insert_event(
+            &tx,
+            run_id,
+            Some(attempt_id),
+            "workflow_launch_prepared",
+            serde_json::to_value(&manifest)?,
+            None,
+        )?;
+        transition_step(
+            &tx,
+            run_id,
+            step_id,
+            StepExecutionState::Pending,
+            StepExecutionState::Running,
+        )?;
+        tx.commit()?;
+        Ok(Some(PreparedAttempt {
+            run_id,
+            step_execution_id: step_id,
+            attempt_id,
+            execution_token: token,
+            account_id: account.to_owned(),
+            outcome: MockOutcome::Succeeded,
+            delay_milliseconds: None,
+        }))
+    }
+
     pub fn list_checkpoints(&self, run_id: Uuid) -> Result<Vec<CheckpointRecord>, StorageError> {
         let mut statement = self.connection.prepare(
             "SELECT id, workspace_id, run_id, attempt_id, base_sha, commit_sha,
@@ -1275,8 +1946,14 @@ impl Storage {
         )?;
         let rows = statement.query_map([], |row| {
             let attempt_str: String = row.get(2)?;
-            let attempt_id = parse_uuid("resource lock attempt", &attempt_str)
-                .map_err(|error| rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(error)))?;
+            let attempt_id =
+                parse_uuid("resource lock attempt", &attempt_str).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        2,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?;
             Ok(ResourceLockRecord {
                 resource_type: row.get(0)?,
                 resource_id: row.get(1)?,
@@ -1303,7 +1980,9 @@ impl Storage {
 
         let path = std::path::PathBuf::from(&workspace_path);
         if !path.exists() {
-            return Ok(format!("工作区目录暂未保留或已清理: {workspace_path} (Commit: {commit_sha})"));
+            return Ok(format!(
+                "工作区目录暂未保留或已清理: {workspace_path} (Commit: {commit_sha})"
+            ));
         }
 
         let output = std::process::Command::new("git")
@@ -1313,7 +1992,10 @@ impl Storage {
 
         match output {
             Ok(out) if out.status.success() => Ok(String::from_utf8_lossy(&out.stdout).to_string()),
-            Ok(out) => Ok(format!("git show 异常: {}", String::from_utf8_lossy(&out.stderr))),
+            Ok(out) => Ok(format!(
+                "git show 异常: {}",
+                String::from_utf8_lossy(&out.stderr)
+            )),
             Err(err) => Ok(format!("执行 git 命令失败: {err}")),
         }
     }
@@ -1386,7 +2068,8 @@ impl Storage {
     }
 
     pub fn delete_schedule(&self, id: &str) -> Result<(), StorageError> {
-        self.connection.execute("DELETE FROM schedules WHERE id = ?1", [id])?;
+        self.connection
+            .execute("DELETE FROM schedules WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -1410,7 +2093,16 @@ impl Storage {
 
         let mut goals = Vec::new();
         for row in rows {
-            let (id, title, description, status, deadline, actions_used, actions_budget, created_at) = row?;
+            let (
+                id,
+                title,
+                description,
+                status,
+                deadline,
+                actions_used,
+                actions_budget,
+                created_at,
+            ) = row?;
             let mut m_stmt = self.connection.prepare(
                 "SELECT id, goal_id, title, completed, sort_order
                  FROM milestones WHERE goal_id = ?1 ORDER BY sort_order ASC",
@@ -1502,7 +2194,8 @@ impl Storage {
     }
 
     pub fn delete_goal(&self, id: &str) -> Result<(), StorageError> {
-        self.connection.execute("DELETE FROM goals WHERE id = ?1", [id])?;
+        self.connection
+            .execute("DELETE FROM goals WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -2172,7 +2865,7 @@ impl Storage {
     pub fn list_runs(&self) -> Result<Vec<RunSummary>, StorageError> {
         let mut statement = self.connection.prepare(
             "SELECT r.id, r.task_id, t.title, t.description, r.state, a.state,
-                    r.created_at, r.finished_at
+                    r.created_at, r.finished_at, json_extract(r.config_snapshot_json, '$.kind')
              FROM runs r
              JOIN tasks t ON t.id = r.task_id
              JOIN step_executions s ON s.id = (
@@ -2198,6 +2891,7 @@ impl Storage {
                 row.get::<_, Option<String>>(5)?,
                 row.get::<_, String>(6)?,
                 row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
             ))
         })?;
 
@@ -2211,8 +2905,10 @@ impl Storage {
                 attempt_state,
                 created_at,
                 finished_at,
+                workflow_kind,
             ) = row?;
             Ok(RunSummary {
+                workflow_kind,
                 run_id: parse_uuid("run", &run_id)?,
                 task_id: parse_uuid("task", &task_id)?,
                 title,
@@ -2482,6 +3178,20 @@ fn migrate_transaction(connection: &mut Connection) -> Result<(), StorageError> 
                     ('m-22', 'goal-2', '未知状态保留资源锁与防重复领取', 1, 2),
                     ('m-23', 'goal-2', '崩溃恢复控制中心与手动强制干预', 0, 3)",
             [],
+        )?;
+    }
+    if current < 6 {
+        tx.execute_batch(MIGRATION_6)?;
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (6, ?1)",
+            [timestamp()],
+        )?;
+    }
+    if current < 7 {
+        tx.execute_batch(MIGRATION_7)?;
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (7, ?1)",
+            [timestamp()],
         )?;
     }
     tx.commit()?;
@@ -2948,7 +3658,7 @@ mod tests {
         assert_eq!(foreign_keys, 1);
         assert_eq!(journal_mode, "wal");
         assert_eq!(busy_timeout, 5_000);
-        assert_eq!(migration_count, 5);
+        assert_eq!(migration_count, 7);
         drop(storage);
 
         let reopened = Storage::open(&path).unwrap();
@@ -2958,7 +3668,26 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(migration_count, 5);
+        assert_eq!(migration_count, 7);
+    }
+
+    #[test]
+    fn persists_exact_cli_usage_components() {
+        let directory = tempfile::tempdir().unwrap();
+        let storage = Storage::open(&directory.path().join("agentflow.sqlite")).unwrap();
+        let usage = CliUsageRecord {
+            provider_id: "provider-cli-agy-1".into(),
+            model: "gemini-3.8-flash-low".into(),
+            input_tokens: 13_396,
+            output_tokens: 1,
+            thinking_tokens: 0,
+            cache_read_tokens: 0,
+            total_tokens: 13_397,
+            created_at: timestamp(),
+        };
+        storage.record_cli_usage(&usage).unwrap();
+        let records = storage.list_cli_usage().unwrap();
+        assert_eq!(records, vec![usage]);
     }
 
     #[test]

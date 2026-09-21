@@ -9,6 +9,7 @@ import { AgentManagerView } from "./AgentManagerView";
 import { SchedulesView } from "./SchedulesView";
 import { PlanningView } from "./PlanningView";
 import { ChatView } from "./ChatView";
+import { TokenUsageView } from "./TokenUsageView";
 
 import {
   IconChat,
@@ -16,9 +17,10 @@ import {
   IconPlanning,
   IconSchedule,
   IconAgent,
+  IconActivity,
 } from "./icons";
 
-const navigation = ["对话", "任务", "项目规划", "定时任务"];
+const navigation = ["对话", "任务", "项目规划", "定时任务", "用量与余额"];
 
 export function App() {
   const [activeTab, setActiveTab] = useState<string>("对话");
@@ -96,6 +98,7 @@ export function App() {
               {item === "任务" && <span className="nav-icon"><IconTasks size={16} /></span>}
               {item === "项目规划" && <span className="nav-icon"><IconPlanning size={16} /></span>}
               {item === "定时任务" && <span className="nav-icon"><IconSchedule size={16} /></span>}
+              {item === "用量与余额" && <span className="nav-icon"><IconActivity size={16} /></span>}
               <span>{item}</span>
             </button>
           ))}
@@ -109,7 +112,7 @@ export function App() {
             onClick={() => handleTabClick("Agent")}
           >
             <span className="nav-icon"><IconAgent size={16} /></span>
-            <span>Agent 角色管理</span>
+            <span>Agent & 技能管理</span>
           </button>
         </div>
       </aside>
@@ -128,6 +131,7 @@ export function App() {
             runId={selectedRunId}
             onBack={() => setSelectedRunId(null)}
             onRefreshList={refreshRuns}
+            onSelectRun={handleSelectRun}
           />
         ) : (
           <>
@@ -163,6 +167,12 @@ export function App() {
               <SchedulesView
                 onTriggerRun={handleSelectRun}
                 onRefresh={refreshRuns}
+              />
+            )}
+
+            {activeTab === "用量与余额" && (
+              <TokenUsageView
+                onOpenProviderModal={() => setActiveTab("Agent")}
               />
             )}
 

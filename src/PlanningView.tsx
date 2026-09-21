@@ -7,6 +7,7 @@ import {
   createMockDevelopmentTask,
   type GoalRecord,
 } from "./api";
+import { confirmDelete } from "./confirmDelete";
 import {
   IconChat,
   IconClose,
@@ -101,6 +102,8 @@ export function PlanningView({
   };
 
   const handleDeletePlan = async (id: string) => {
+    const plan = plans.find((item) => item.id === id);
+    if (!confirmDelete(`规划项目“${plan?.title || "未命名"}”`)) return;
     setBusy(true);
     try {
       await deleteGoal(id);
@@ -241,9 +244,7 @@ export function PlanningView({
       <div className="page-header-row">
         <div>
           <h1>项目规划</h1>
-          <p className="page-subtitle">
-            复杂与大型需求看板。自顶向下拆解阶段目标，支持与对话 Agent 进行 Grill-Me 深度方案推演。
-          </p>
+          <p className="page-subtitle">拆解项目目标，跟踪阶段进度。</p>
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           {onNavigateToTab && (

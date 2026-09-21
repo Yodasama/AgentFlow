@@ -38,6 +38,7 @@ export interface CreateMockTaskRequest {
 }
 
 export interface RunSummary {
+  workflowKind: string | null;
   runId: string;
   taskId: string;
   title: string;
@@ -116,6 +117,15 @@ export interface WorkflowVersionRecord {
   digest: string;
   definition: WorkflowDefinition;
   createdAt: string;
+}
+
+export interface TaskWorkflowRecord {
+  runId: string;
+  definition: WorkflowDefinition;
+  layout: Record<string, { x: number; y: number }>;
+  revision: number;
+  status: "draft" | "published";
+  workflowVersionId: string | null;
 }
 
 export interface ValidationIssue {
@@ -234,6 +244,25 @@ export interface AccountOverview {
 export const listWorkflowVersions = () =>
   invoke<WorkflowVersionRecord[]>("list_workflow_versions");
 
+export const createTaskWorkflowDraft = (
+  request: Pick<CreateMockTaskRequest, "title" | "description" | "acceptanceCriteria">,
+) => invoke<RunDetail>("create_task_workflow_draft", { request });
+
+export const getTaskWorkflow = (runId: string) =>
+  invoke<TaskWorkflowRecord>("get_task_workflow", { runId });
+
+export const saveTaskWorkflow = (
+  runId: string,
+  workflow: WorkflowDefinition,
+  layout: Record<string, { x: number; y: number }>,
+) => invoke<TaskWorkflowRecord>("save_task_workflow", { runId, workflow, layout });
+
+export const startTaskWorkflow = (runId: string) =>
+  invoke<TaskWorkflowRecord>("start_task_workflow", { runId });
+
+export const submitTaskWorkflowApproval = (runId: string, approved: boolean) =>
+  invoke<TaskWorkflowRecord>("submit_task_workflow_approval", { runId, approved });
+
 export const listCheckpoints = (runId: string) =>
   invoke<CheckpointRecord[]>("list_checkpoints", { runId });
 
@@ -308,6 +337,9 @@ export interface DetectedCliAgent {
   executablePath: string | null;
   available: boolean;
   version: string | null;
+  accountEmail: string | null;
+  customHome: string | null;
+  isAuthenticated: boolean;
 }
 
 export interface CliAgentExecutionResult {
@@ -315,18 +347,118 @@ export interface CliAgentExecutionResult {
   exitCode: number | null;
   stdout: string;
   stderr: string;
+  conversationId: string | null;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    thinkingTokens: number;
+    cacheReadTokens: number;
+    totalTokens: number;
+  } | null;
 }
 
 export const detectLocalCliAgents = () =>
   invoke<DetectedCliAgent[]>("detect_local_cli_agents");
 
+export const openCliLogin = (providerId: string) =>
+  invoke<void>("open_cli_login", { providerId });
+
 export const runCliAgent = (
-  program: string,
-  argumentsList: string[],
-  workingDirectory?: string | null,
+  request: {
+    providerId: string;
+    prompt: string;
+    model: string;
+    reasoningEffort: string;
+    workingDirectory: string;
+  },
 ) =>
-  invoke<CliAgentExecutionResult>("run_cli_agent", {
-    program,
-    arguments: argumentsList,
-    workingDirectory: workingDirectory || null,
-  });
+  invoke<CliAgentExecutionResult>("run_cli_agent", { request });
+
+export interface GitWorkspaceInfo {
+  isGit: boolean;
+  currentBranch: string | null;
+  branches: string[];
+  uncommittedCount: number;
+}
+
+export const getGitWorkspaceInfo = (path: string) =>
+  invoke<GitWorkspaceInfo>("get_git_workspace_info", { path });
+
+export const checkoutGitBranch = (path: string, branch: string, create: boolean) =>
+  invoke<string>("checkout_git_branch", { path, branch, create });
+
+export const pickDirectory = () =>
+  invoke<string | null>("pick_directory");
+
+export interface RateLimitWindow {
+  usedPercent: number;
+  windowDurationMins: number;
+  resetsAt: number;
+}
+
+export interface RealCliTokenStats {
+  codex: {
+    available: boolean;
+    error: string | null;
+    planType: string | null;
+    summary: {
+      lifetimeTokens: number | null;
+      peakDailyTokens: number | null;
+      longestRunningTurnSec: number | null;
+      currentStreakDays: number | null;
+      longestStreakDays: number | null;
+    };
+    dailyUsage: Record<string, number>;
+    primary: RateLimitWindow | null;
+    secondary: RateLimitWindow | null;
+    credits: { hasCredits: boolean; unlimited: boolean; balance: string | null } | null;
+    refreshedAt: string;
+  };
+  agyAccounts: Array<{
+    providerId: string;
+    name: string;
+    available: boolean;
+    error: string | null;
+    totalTokens: number;
+    dailyUsage: Record<string, number>;
+    latestUsage: {
+      inputTokens: number;
+      outputTokens: number;
+      thinkingTokens: number;
+      cacheReadTokens: number;
+      totalTokens: number;
+    } | null;
+    latestModel: string | null;
+    latestAt: string | null;
+    quotaGroups: Array<{
+      name: string;
+      buckets: Array<{
+        id: string;
+        window: string;
+        remainingFraction: number;
+        resetTime: string;
+      }>;
+    }>;
+  }>;
+}
+
+let realCliTokenStatsRequest: Promise<RealCliTokenStats> | null = null;
+
+export const getRealCliTokenStats = () => {
+  if (!realCliTokenStatsRequest) {
+    realCliTokenStatsRequest = invoke<RealCliTokenStats>("get_real_cli_token_stats").finally(() => {
+      realCliTokenStatsRequest = null;
+    });
+  }
+  return realCliTokenStatsRequest;
+};
+
+export const getCachedCliTokenStats = () =>
+  invoke<RealCliTokenStats | null>("get_cached_cli_token_stats");
+
+export const openNativeView = (target: string) =>
+  invoke<string>("open_native_view", { target });
+
+export const fetchExternalUrl = (url: string) =>
+  invoke<string>("fetch_external_url", { url });
+

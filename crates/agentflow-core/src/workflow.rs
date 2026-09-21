@@ -9,6 +9,62 @@ use uuid::Uuid;
 pub const WORKFLOW_SCHEMA_VERSION: u32 = 1;
 pub const WORKFLOW_NODE_VERSION: u32 = 1;
 
+pub fn starter_task_workflow() -> WorkflowDefinition {
+    WorkflowDefinition {
+        schema_version: WORKFLOW_SCHEMA_VERSION,
+        name: "任务工作流".to_owned(),
+        nodes: vec![
+            WorkflowNode {
+                id: "start".to_owned(),
+                version: WORKFLOW_NODE_VERSION,
+                kind: NodeKind::Start,
+                label: "开始".to_owned(),
+                role: None,
+                command: None,
+                required_inputs: BTreeSet::new(),
+            },
+            WorkflowNode {
+                id: "execute".to_owned(),
+                version: WORKFLOW_NODE_VERSION,
+                kind: NodeKind::Agent,
+                label: "执行任务".to_owned(),
+                role: Some("executor".to_owned()),
+                command: None,
+                required_inputs: BTreeSet::new(),
+            },
+            WorkflowNode {
+                id: "end".to_owned(),
+                version: WORKFLOW_NODE_VERSION,
+                kind: NodeKind::End,
+                label: "完成".to_owned(),
+                role: None,
+                command: None,
+                required_inputs: BTreeSet::new(),
+            },
+        ],
+        edges: vec![
+            WorkflowEdge {
+                id: "start-execute".to_owned(),
+                source: "start".to_owned(),
+                target: "execute".to_owned(),
+                is_default: false,
+                predicate: None,
+            },
+            WorkflowEdge {
+                id: "execute-end".to_owned(),
+                source: "execute".to_owned(),
+                target: "end".to_owned(),
+                is_default: false,
+                predicate: None,
+            },
+        ],
+        repeat_blocks: Vec::new(),
+        role_bindings: BTreeMap::from([("executor".to_owned(), "mock:default".to_owned())]),
+        available_inputs: BTreeSet::from(["task".to_owned(), "workspace".to_owned()]),
+        budget: WorkflowBudget::default(),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowDefinition {
@@ -161,6 +217,25 @@ pub struct WorkflowVersionRecord {
     pub digest: String,
     pub definition: WorkflowDefinition,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskWorkflowRecord {
+    pub run_id: Uuid,
+    pub definition: WorkflowDefinition,
+    pub layout: Value,
+    pub revision: u32,
+    pub status: String,
+    pub workflow_version_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskWorkflowExecutionState {
+    pub cursor: WorkflowCursor,
+    #[serde(default)]
+    pub facts: Value,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]

@@ -7,6 +7,7 @@ import {
   createMockTask,
   type ScheduleRecord,
 } from "./api";
+import { confirmDelete } from "./confirmDelete";
 import {
   IconClose,
   IconUser,
@@ -172,6 +173,8 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
 
   const handleDelete = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    const schedule = schedules.find((item) => item.id === id);
+    if (!confirmDelete(`定时任务“${schedule?.name || "未命名"}”`)) return;
     setBusy(true);
     try {
       await deleteSchedule(id);
@@ -309,9 +312,7 @@ export function SchedulesView({ onTriggerRun, onRefresh }: Props) {
       <div className="page-header-row">
         <div>
           <h1>定时任务</h1>
-          <p className="page-subtitle">
-            配置周期性自动化规则。指定模型与推理深度，自动感知运行环境，纯净极简。
-          </p>
+          <p className="page-subtitle">按计划自动运行任务。</p>
         </div>
         <button
           className="apple-btn-primary"

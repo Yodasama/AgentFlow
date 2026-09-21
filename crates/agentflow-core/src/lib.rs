@@ -5,5 +5,6 @@ pub mod execution;
 pub mod git_workspace;
 pub mod protocol;
 pub mod storage;
+pub mod task_workflow_runtime;
 pub mod workflow;
 pub mod workflow_run;

@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   saveGoal,
   saveSchedule,
   createMockDevelopmentTask,
+  pickDirectory,
+  getGitWorkspaceInfo,
+  checkoutGitBranch,
   type GoalRecord,
   type ScheduleRecord,
+  type GitWorkspaceInfo,
 } from "./api";
 import {
   type Workspace,
@@ -20,18 +24,25 @@ import {
   getWorkspaceBranches,
   addWorkspaceBranch,
   updateWorkspaceBranch,
+  addWorkspace,
+  setActiveWorkspaceId,
 } from "./workspaces";
 import { WorkspaceModal } from "./WorkspaceModal";
 import { ServerModal } from "./ServerModal";
 import {
   type AgentProviderConfig,
+  type UnifiedMessage,
   getActiveProvider,
   getStoredProviders,
+  setActiveProviderId,
   detectLocalEndpoints,
   UnifiedAgentAdapter,
 } from "./agentAdapter";
 import { ProviderModal } from "./ProviderModal";
 import { DrawerSelect, type DrawerSelectOption } from "./DrawerSelect";
+import { CodexModelPopover } from "./CodexModelPopover";
+import { TokenUsageModal } from "./TokenUsageModal";
+import { loadAgentRoles, type AgentRoleConfig, RoleIcon } from "./AgentManagerView";
 import {
   IconSparkles,
   IconChat,
@@ -57,6 +68,9 @@ import {
   IconTrash,
   IconGitBranch,
   IconServer,
+  IconSearch,
+  IconClose,
+  IconCheck,
 } from "./icons";
 
 interface Props {
@@ -219,9 +233,10 @@ export function ChatView({
 
   // Active Provider & Model (Local vs Cloud API via Unified Adapter)
   const [activeProvider, setActiveProvider] = useState<AgentProviderConfig>(() => getActiveProvider());
-  const [selectedModel, setSelectedModel] = useState(activeProvider.models[0] || "Claude 3.5 Sonnet");
+  const [selectedModel, setSelectedModel] = useState(activeProvider.models[0] || "agy (默认模式)");
   const [showProviderModal, setShowProviderModal] = useState(false);
-  const [selectedReasoning, setSelectedReasoning] = useState("深度 (High)");
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [selectedReasoning, setSelectedReasoning] = useState("轻度");
 
   // Multi-session history state
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
@@ -233,12 +248,13 @@ export function ChatView({
       updatedAt: Date.now(),
       messages: [],
       workspaceId: getActiveWorkspace().id,
-      model: "Claude 3.5 Sonnet",
+      model: "agy (默认模式)",
       reasoning: "深度 (High)",
     };
     saveStoredChatSessions([initial]);
     return [initial];
   });
+  const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null);
 
   const [activeSessionId, setActiveSessionId] = useState<string>(() => {
     const saved = localStorage.getItem(ACTIVE_SESSION_ID_KEY);
@@ -266,6 +282,101 @@ export function ChatView({
     setBranches(getWorkspaceBranches(activeWorkspace));
   }, [activeWorkspace]);
 
+  // Workspaces & Codex Popovers state
+  const [allWorkspaces, setAllWorkspaces] = useState<Workspace[]>(() => getStoredWorkspaces());
+  const [activeContextPopup, setActiveContextPopup] = useState<"project" | "env" | "branch" | null>(null);
+  const [projectSearchText, setProjectSearchText] = useState("");
+  const [branchSearchText, setBranchSearchText] = useState("");
+  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
+  const [newBranchInput, setNewBranchInput] = useState("");
+  const [gitInfo, setGitInfo] = useState<GitWorkspaceInfo | null>(null);
+  const contextStripRef = useRef<HTMLDivElement>(null);
+
+  // Decoupled Role selection
+  const [selectedRoleId, setSelectedRoleId] = useState<string>("role-general");
+  const availableRoles = useMemo(() => {
+    const custom = loadAgentRoles();
+    const generalRole: AgentRoleConfig = {
+      id: "role-general",
+      roleName: "通用编程助手",
+      icon: "zap",
+      description: "全能开发与工程协作，无特定角色约束",
+      systemPrompt: "你是一名资深全栈工程师与全能开发助手。严谨、高效地解答问题、编写生产级代码并协助调试重构。",
+      isBuiltin: true,
+    };
+    return [generalRole, ...custom.filter((r) => r.id !== "role-general")];
+  }, []);
+
+  const refreshGitInfo = async (wsPath?: string) => {
+    const targetPath = wsPath !== undefined ? wsPath : activeWorkspace?.path;
+    if (!targetPath || !targetPath.trim()) {
+      setGitInfo(null);
+      return;
+    }
+    try {
+      const info = await getGitWorkspaceInfo(targetPath);
+      setGitInfo(info);
+      if (info.currentBranch) {
+        setCurrentBranch(info.currentBranch);
+      }
+      if (info.branches && info.branches.length > 0) {
+        setBranches(info.branches);
+      }
+    } catch (err) {
+      console.warn("getGitWorkspaceInfo failed:", err);
+    }
+  };
+
+  useEffect(() => {
+    void refreshGitInfo(activeWorkspace.path);
+  }, [activeWorkspace.path]);
+
+  // Click outside to close context popovers
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (
+        contextStripRef.current &&
+        !contextStripRef.current.contains(e.target as Node)
+      ) {
+        setActiveContextPopup(null);
+      }
+    };
+    if (activeContextPopup) {
+      document.addEventListener("mousedown", handleOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+    };
+  }, [activeContextPopup]);
+
+  const handleOpenFinder = async () => {
+    setActiveContextPopup(null);
+    try {
+      const picked = await pickDirectory();
+      if (picked) {
+        const folderName = picked.split("/").filter(Boolean).pop() || "新项目";
+        const newWs = addWorkspace(folderName, picked);
+        setAllWorkspaces(getStoredWorkspaces());
+        setActiveWorkspace(newWs);
+        showToast(`已从 Mac Finder 关联工作区【${folderName}】`);
+        void refreshGitInfo(picked);
+      }
+    } catch (err) {
+      showToast(`调用 Mac Finder 失败: ${String(err)}`);
+    }
+  };
+
+  const handleCheckoutBranch = async (bName: string, create: boolean = false) => {
+    if (!activeWorkspace?.path) return;
+    try {
+      await checkoutGitBranch(activeWorkspace.path, bName, create);
+      showToast(create ? `已创建并检出新分支【${bName}】` : `已切换至分支【${bName}】`);
+      void refreshGitInfo(activeWorkspace.path);
+    } catch (err) {
+      showToast(`分支操作失败: ${String(err)}`);
+    }
+  };
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const s = sessions.find((item) => item.id === activeSessionId) || sessions[0];
     return s?.messages || [];
@@ -283,7 +394,7 @@ export function ChatView({
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ block: "end" });
   };
 
   useEffect(() => {
@@ -302,13 +413,18 @@ export function ChatView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [sessions, activeWorkspace, selectedModel, selectedReasoning]);
 
+  // Track session loading to prevent timestamp update on mere view/click
+  const lastLoadedSessionRef = useRef<{ id: string; messages: ChatMessage[] } | null>(null);
+
   // Session switching
   useEffect(() => {
     if (!activeSessionId) return;
     localStorage.setItem(ACTIVE_SESSION_ID_KEY, activeSessionId);
     const target = sessions.find((s) => s.id === activeSessionId);
     if (target) {
-      setMessages(target.messages || []);
+      const msgs = target.messages || [];
+      lastLoadedSessionRef.current = { id: target.id, messages: msgs };
+      setMessages(msgs);
       if (target.workspaceId) {
         const storedWs = getStoredWorkspaces();
         const foundWs = storedWs.find((w) => w.id === target.workspaceId);
@@ -322,29 +438,60 @@ export function ChatView({
   // Sync messages & session metadata
   useEffect(() => {
     setSessions((prev) => {
-      const updated = prev.map((s) => {
-        if (s.id !== activeSessionId) return s;
-        let title = s.title;
-        if ((!title || title === "新会话" || title === "新对话") && messages.length > 0) {
-          const firstUser = messages.find((m) => m.sender === "user");
-          if (firstUser) {
-            title = firstUser.content.replace(/【.*?】/g, "").trim().slice(0, 24) || "新会话";
-          }
+      const currentSession = prev.find((s) => s.id === activeSessionId);
+      if (!currentSession) return prev;
+
+      // Check if messages were just loaded from session switch
+      const wasJustLoaded = lastLoadedSessionRef.current?.id === activeSessionId
+        && lastLoadedSessionRef.current.messages === messages;
+
+      // Only update timestamp when actual new messages are added or changed
+      const hasNewOrChangedMessages = !wasJustLoaded && messages !== currentSession.messages && (
+        messages.length !== (currentSession.messages?.length || 0) ||
+        (messages.length > 0 && messages[messages.length - 1]?.content !== currentSession.messages?.[currentSession.messages.length - 1]?.content)
+      );
+
+      const nextUpdatedAt = hasNewOrChangedMessages ? Date.now() : currentSession.updatedAt;
+
+      let title = currentSession.title;
+      if ((!title || title === "新会话" || title === "新对话") && messages.length > 0) {
+        const firstUser = messages.find((m) => m.sender === "user");
+        if (firstUser) {
+          title = firstUser.content.replace(/【.*?】/g, "").trim().slice(0, 24) || "新会话";
         }
+      }
+
+      // Avoid unnecessary state update if nothing changed
+      if (
+        currentSession.title === title &&
+        currentSession.messages === messages &&
+        currentSession.updatedAt === nextUpdatedAt &&
+        currentSession.workspaceId === activeWorkspace.id &&
+        currentSession.model === selectedModel &&
+        currentSession.reasoning === selectedReasoning
+      ) {
+        return prev;
+      }
+
+      return prev.map((s) => {
+        if (s.id !== activeSessionId) return s;
         return {
           ...s,
           title,
           messages,
-          updatedAt: Date.now(),
+          updatedAt: nextUpdatedAt,
           workspaceId: activeWorkspace.id,
           model: selectedModel,
           reasoning: selectedReasoning,
         };
       });
-      saveStoredChatSessions(updated);
-      return updated;
     });
-  }, [messages, activeWorkspace, selectedModel, selectedReasoning]);
+  }, [messages, activeWorkspace, selectedModel, selectedReasoning, activeSessionId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => saveStoredChatSessions(sessions), 200);
+    return () => window.clearTimeout(timer);
+  }, [sessions]);
 
   const handleNewSession = () => {
     const newSession: ChatSession = {
@@ -363,8 +510,7 @@ export function ChatView({
     setMessages([]);
   };
 
-  const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteSession = (sessionId: string) => {
     const filtered = sessions.filter((s) => s.id !== sessionId);
     if (filtered.length === 0) {
       const fresh: ChatSession = {
@@ -546,29 +692,43 @@ export function ChatView({
         const isAgy = activeProvider.id.includes("agy") || selectedModel.toLowerCase().includes("agy");
         const agentName = isAgy ? "Google Antigravity (agy)" : "OpenAI Codex CLI (codex)";
         const startTime = Date.now();
+        const activeRole = availableRoles.find((r) => r.id === selectedRoleId);
+        const rolePrefix =
+          activeRole && selectedRoleId !== "role-general"
+            ? `担任【${activeRole.roleName}】`
+            : "";
 
         const statusMsgId = `msg-ai-${Date.now()}`;
         const statusMsg: ChatMessage = {
           id: statusMsgId,
           sender: "assistant",
-          content: `正在调用本地 CLI Agent【${agentName}】在工作区【${activeWorkspace.name}】（分支: ${currentBranch}）中执行任务，请稍候…`,
+          content: `正在调用本地 CLI Agent【${agentName}】${rolePrefix}在工作区【${activeWorkspace.name}】（分支: ${currentBranch}）中执行任务，请稍候…`,
         };
         setMessages((prev) => [...prev, statusMsg]);
 
         void (async () => {
           try {
+            const promptMessages: UnifiedMessage[] = [];
+            if (activeRole && selectedRoleId !== "role-general" && activeRole.systemPrompt) {
+              promptMessages.push({ role: "system", content: activeRole.systemPrompt });
+            }
+            promptMessages.push({ role: "user", content: query });
+
             const res = await UnifiedAgentAdapter.execute({
               providerId: activeProvider.id,
               model: selectedModel,
-              messages: [{ role: "user", content: query }],
+              messages: promptMessages,
               workspacePath: activeWorkspace.path,
-              reasoningEffort: selectedReasoning.includes("深度") ? "深度" : "快速",
+              reasoningEffort:
+                selectedReasoning.includes("深度") ||
+                selectedReasoning.includes("强劲") ||
+                selectedReasoning.includes("极致")
+                  ? "深度"
+                  : "快速",
             });
 
             const durationMs = Date.now() - startTime;
-            const fullCmd = isAgy
-              ? `${activeProvider.baseUrl || "agy"} -p "${query}" --dangerously-skip-permissions`
-              : `${activeProvider.baseUrl || "codex"} exec "${query}" -C "${activeWorkspace.path}" --dangerously-bypass-approvals-and-sandbox`;
+            const fullCmd = `${agentName} · 受限业务命令 · workspace=${activeWorkspace.path}`;
 
             const hasErr = res.content.startsWith("[CLI 执行错误]") || res.content.includes("CLI 退出码异常");
 
@@ -861,46 +1021,7 @@ export function ChatView({
     }
   };
 
-  const reasoningShort = selectedReasoning.startsWith("深度") ? "深度" : "轻度";
-  const modelShortName = selectedModel.replace(/Claude-|GPT-/g, "").split(" ")[0] || selectedModel;
 
-  const combinedModelOptions: DrawerSelectOption[] = [
-    {
-      value: `${selectedModel}:::轻度`,
-      label: `${selectedModel} (快速轻度)`,
-      description: "低延迟极速响应，适合轻量单步或日常咨询",
-      icon: <IconCpu size={13} stroke="#787774" />,
-    },
-    {
-      value: `${selectedModel}:::深度`,
-      label: `${selectedModel} (深度长思考)`,
-      description: "全链条长思考、严苛自检与复杂工程拆解",
-      icon: <IconSparkles size={13} stroke="#787774" />,
-      badge: "推荐",
-    },
-    ...activeProvider.models
-      .filter((m) => m !== selectedModel)
-      .flatMap((m) => [
-        {
-          value: `${m}:::深度`,
-          label: `${m} 深度`,
-          description: "深度思考模式",
-          icon: <IconCpu size={13} stroke="#787774" />,
-        },
-        {
-          value: `${m}:::轻度`,
-          label: `${m} 轻度`,
-          description: "快速响应模式",
-          icon: <IconCpu size={13} stroke="#787774" />,
-        },
-      ]),
-    {
-      value: "__switch_provider__",
-      label: "⇄ 切换接入源 (agy / codex / API)…",
-      description: "配置或选用 Google agy CLI、OpenAI codex CLI、云端 API",
-      icon: <IconSettings size={13} stroke="#787774" />,
-    },
-  ];
 
   const envOptions: DrawerSelectOption[] = [
     {
@@ -969,19 +1090,17 @@ export function ChatView({
     <div className="gpt-chat-root">
       {/* Left Collapsible History Sidebar */}
       <aside className={`chat-history-sidebar ${showHistory ? "" : "collapsed"}`}>
-        {/* Top Action: New Chat (consistent with left navigation) */}
+        {/* History heading and primary action */}
         <div className="history-top-actions">
-          <button
+          <span className="history-sidebar-title">对话</span>
+        <button
             type="button"
             className="history-new-chat-btn"
             onClick={handleNewSession}
             title="开启新对话 (⌘N)"
           >
-            <div className="history-new-chat-left">
-              <IconPlus size={13} stroke="currentColor" />
-              <span>新对话</span>
-            </div>
-            <kbd className="history-shortcut-badge">⌘N</kbd>
+            <IconPlus size={13} stroke="currentColor" />
+            <span>新建</span>
           </button>
         </div>
 
@@ -1005,9 +1124,6 @@ export function ChatView({
                         className={`history-session-item ${isActive ? "active" : ""}`}
                         onClick={() => setActiveSessionId(s.id)}
                       >
-                        <span className="session-item-icon">
-                          <IconChat size={13} stroke="currentColor" />
-                        </span>
                         <div className="history-session-info">
                           <span className="history-session-title">{s.title || "新会话"}</span>
                           <span className="history-session-date">{formatSessionTime(s.updatedAt)}</span>
@@ -1015,7 +1131,10 @@ export function ChatView({
                         <button
                           type="button"
                           className="history-delete-btn"
-                          onClick={(e) => handleDeleteSession(s.id, e)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPendingDeleteSessionId(s.id);
+                          }}
                           title="删除此会话"
                         >
                           <IconTrash size={12} stroke="currentColor" />
@@ -1029,12 +1148,6 @@ export function ChatView({
           )}
         </div>
 
-        {/* Discreet Sidebar Footer */}
-        {sessions.length > 0 && (
-          <div className="history-sidebar-footer">
-            <span>{sessions.length} 个历史对话</span>
-          </div>
-        )}
       </aside>
 
       {/* Main Chat Column */}
@@ -1468,72 +1581,284 @@ export function ChatView({
       <div className="gpt-bottom-dock-wrapper">
         <div className="chat-dock-envelope">
           {/* 1. Context Strip (Top grey bar: 📁 简历  💻 本地  ⑂ master) */}
-          <div className="chat-attached-context-strip">
-            <button
-              type="button"
-              className="context-strip-btn"
-              onClick={() => setShowWorkspaceModal(true)}
-              title="点击切换关联工程工作区"
-            >
-              <IconFolder size={13} stroke="#38383a" />
-              <span>{activeWorkspace.name}</span>
-            </button>
-
-            <DrawerSelect
-              size="sm"
-              value={currentEnvValue}
-              onChange={(val) => {
-                if (val === "__add_server__" || val === "__manage_servers__") {
-                  setShowServerModal(true);
-                  return;
+          <div className="chat-attached-context-strip" ref={contextStripRef}>
+            {/* Pill 1: 📁 Project Name (Click opens Upward Codex Popover) */}
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                className={`context-strip-btn ${activeContextPopup === "project" ? "active" : ""}`}
+                onClick={() =>
+                  setActiveContextPopup(activeContextPopup === "project" ? null : "project")
                 }
-                if (val === "local") {
-                  setEnvTarget("local");
-                  persistActiveEnv("local");
-                  setSelectedServerId(null);
-                  persistActiveServerId(null);
-                  showToast("已切换执行环境至本机 (Localhost)");
-                } else if (val.startsWith("server:::")) {
-                  const srvId = val.split(":::")[1];
-                  setEnvTarget("server");
-                  persistActiveEnv("server");
-                  setSelectedServerId(srvId);
-                  persistActiveServerId(srvId);
-                  const matched = servers.find((s) => s.id === srvId);
-                  showToast(`已切换执行环境至服务器【${matched?.name || "远程服务器"}】`);
-                }
-              }}
-              options={envOptions}
-              customLabel={envDisplayLabel}
-              triggerStyle={{
-                border: "none",
-                background: "transparent",
-                padding: "2px 6px",
-                fontSize: "12.5px",
-                color: "#1d1d1f",
-                fontWeight: 500,
-                gap: "5px",
-                minWidth: "auto",
-              }}
-            />
+              >
+                <IconFolder size={13} stroke="#38383a" />
+                <span>{activeWorkspace?.name || "选择项目"}</span>
+              </button>
 
-            <DrawerSelect
-              size="sm"
-              value={currentBranch}
-              onChange={handleSelectBranch}
-              options={branchOptions}
-              customLabel={currentBranch}
-              triggerStyle={{
-                border: "none",
-                background: "transparent",
-                padding: "2px 6px",
-                fontSize: "12.5px",
-                color: "#1d1d1f",
-                fontWeight: 500,
-                gap: "5px",
-                minWidth: "auto",
-              }}
-            />
+              {activeContextPopup === "project" && (
+                <div className="codex-context-popover" onClick={(e) => e.stopPropagation()}>
+                  <div className="codex-popover-search-box">
+                    <IconSearch size={13} stroke="#8e8e93" />
+                    <input
+                      className="codex-popover-search-input"
+                      placeholder="搜索项目"
+                      value={projectSearchText}
+                      onChange={(e) => setProjectSearchText(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="codex-popover-list">
+                    {allWorkspaces
+                      .filter(
+                        (w) =>
+                          w.name.toLowerCase().includes(projectSearchText.toLowerCase()) ||
+                          w.path.toLowerCase().includes(projectSearchText.toLowerCase())
+                      )
+                      .map((ws) => {
+                        const isSelected = ws.id === activeWorkspace.id;
+                        return (
+                          <div
+                            key={ws.id}
+                            className={`codex-popover-item ${isSelected ? "active" : ""}`}
+                            onClick={() => {
+                              setActiveWorkspace(ws);
+                              setActiveWorkspaceId(ws.id);
+                              setActiveContextPopup(null);
+                              void refreshGitInfo(ws.path);
+                              showToast(`已切换至项目【${ws.name}】`);
+                            }}
+                          >
+                            <div className="codex-popover-item-left">
+                              <IconFolder size={14} stroke={isSelected ? "#0071e3" : "#48484a"} />
+                              <span className="codex-popover-item-text">{ws.name}</span>
+                            </div>
+                            {isSelected && <IconCheck size={13} stroke="#0071e3" />}
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  <div className="codex-popover-divider" />
+
+                  {/* Finder Integration */}
+                  <button
+                    type="button"
+                    className="codex-popover-action-btn"
+                    onClick={handleOpenFinder}
+                  >
+                    <IconPlus size={14} stroke="#48484a" />
+                    <span>打开本地目录 (调用 Mac Finder)…</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="codex-popover-action-btn"
+                    onClick={() => {
+                      const globalWs: Workspace = {
+                        id: "ws-global",
+                        name: "全局工作区",
+                        path: "",
+                        branch: "",
+                        description: "不绑定特定项目目录",
+                      };
+                      setActiveWorkspace(globalWs);
+                      setActiveWorkspaceId(globalWs.id);
+                      setActiveContextPopup(null);
+                      setGitInfo(null);
+                      showToast("已切换至全局模式（不在特定项目中工作）");
+                    }}
+                  >
+                    <IconClose size={13} stroke="#8e8e93" />
+                    <span>不在项目中工作</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Pill 2: 💻 Local / Server (Click opens Upward Codex Popover) */}
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                className={`context-strip-btn ${activeContextPopup === "env" ? "active" : ""}`}
+                onClick={() =>
+                  setActiveContextPopup(activeContextPopup === "env" ? null : "env")
+                }
+              >
+                {envTarget === "local" ? (
+                  <IconLaptop size={13} stroke="#38383a" />
+                ) : (
+                  <IconServer size={13} stroke="#38383a" />
+                )}
+                <span>{envDisplayLabel}</span>
+              </button>
+
+              {activeContextPopup === "env" && (
+                <div className="codex-context-popover" onClick={(e) => e.stopPropagation()}>
+                  <div className="codex-popover-header">工作位置</div>
+
+                  <div className="codex-popover-list">
+                    <div
+                      className={`codex-popover-item ${envTarget === "local" ? "active" : ""}`}
+                      onClick={() => {
+                        setEnvTarget("local");
+                        persistActiveEnv("local");
+                        setSelectedServerId(null);
+                        persistActiveServerId(null);
+                        setActiveContextPopup(null);
+                        showToast("已切换执行环境至本机 (Localhost)");
+                      }}
+                    >
+                      <div className="codex-popover-item-left">
+                        <IconLaptop size={14} stroke={envTarget === "local" ? "#0071e3" : "#48484a"} />
+                        <span className="codex-popover-item-text">本地</span>
+                      </div>
+                      {envTarget === "local" && <IconCheck size={13} stroke="#0071e3" />}
+                    </div>
+
+                    {servers.map((srv) => {
+                      const isSelected = envTarget === "server" && selectedServerId === srv.id;
+                      return (
+                        <div
+                          key={srv.id}
+                          className={`codex-popover-item ${isSelected ? "active" : ""}`}
+                          onClick={() => {
+                            setEnvTarget("server");
+                            persistActiveEnv("server");
+                            setSelectedServerId(srv.id);
+                            persistActiveServerId(srv.id);
+                            setActiveContextPopup(null);
+                            showToast(`已切换执行环境至服务器【${srv.name}】`);
+                          }}
+                        >
+                          <div className="codex-popover-item-left">
+                            <IconServer size={14} stroke={isSelected ? "#0071e3" : "#48484a"} />
+                            <div>
+                              <div className="codex-popover-item-text">{srv.name}</div>
+                              <div className="codex-popover-item-sub">{srv.host}</div>
+                            </div>
+                          </div>
+                          {isSelected && <IconCheck size={13} stroke="#0071e3" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="codex-popover-divider" />
+
+                  <button
+                    type="button"
+                    className="codex-popover-action-btn"
+                    onClick={() => {
+                      setActiveContextPopup(null);
+                      setShowServerModal(true);
+                    }}
+                  >
+                    <IconSettings size={14} stroke="#48484a" />
+                    <span>配置 / 新增服务器…</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Pill 3: ᛘ Git Branch (Click opens Upward Codex Popover) */}
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                className={`context-strip-btn ${activeContextPopup === "branch" ? "active" : ""}`}
+                onClick={() =>
+                  setActiveContextPopup(activeContextPopup === "branch" ? null : "branch")
+                }
+              >
+                <IconGitBranch size={13} stroke="#38383a" />
+                <span>{currentBranch || "main"}</span>
+              </button>
+
+              {activeContextPopup === "branch" && (
+                <div className="codex-context-popover" onClick={(e) => e.stopPropagation()}>
+                  <div className="codex-popover-search-box">
+                    <IconSearch size={13} stroke="#8e8e93" />
+                    <input
+                      className="codex-popover-search-input"
+                      placeholder={`搜索 ${activeWorkspace?.name || ""} 分支`}
+                      value={branchSearchText}
+                      onChange={(e) => setBranchSearchText(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="codex-popover-header">分支</div>
+
+                  <div className="codex-popover-list">
+                    {branches
+                      .filter((b) => b.toLowerCase().includes(branchSearchText.toLowerCase()))
+                      .map((b) => {
+                        const isCurrent = b === currentBranch;
+                        return (
+                          <div
+                            key={b}
+                            className={`codex-popover-item ${isCurrent ? "active" : ""}`}
+                            onClick={() => {
+                              void handleCheckoutBranch(b, false);
+                              setActiveContextPopup(null);
+                            }}
+                          >
+                            <div className="codex-popover-item-left">
+                              <IconGitBranch size={14} stroke={isCurrent ? "#0071e3" : "#48484a"} />
+                              <div>
+                                <div className="codex-popover-item-text">{b}</div>
+                                {isCurrent && (
+                                  <div className="codex-popover-item-sub">
+                                    {gitInfo && gitInfo.uncommittedCount > 0
+                                      ? `未提交：${gitInfo.uncommittedCount} 个文件`
+                                      : "工作区干净"}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            {isCurrent && <IconCheck size={13} stroke="#0071e3" />}
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  <div className="codex-popover-divider" />
+
+                  {isCreatingBranch ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (newBranchInput.trim()) {
+                          void handleCheckoutBranch(newBranchInput.trim(), true);
+                          setNewBranchInput("");
+                          setIsCreatingBranch(false);
+                          setActiveContextPopup(null);
+                        }
+                      }}
+                      style={{ padding: "4px" }}
+                    >
+                      <input
+                        className="feishu-input"
+                        style={{ fontSize: "12px", padding: "4px 8px" }}
+                        placeholder="输入新分支名称，按回车创建…"
+                        value={newBranchInput}
+                        onChange={(e) => setNewBranchInput(e.target.value)}
+                        autoFocus
+                      />
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      className="codex-popover-action-btn"
+                      onClick={() => setIsCreatingBranch(true)}
+                    >
+                      <IconPlus size={14} stroke="#48484a" />
+                      <span>创建并检出新分支…</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 2. Floating Main White Card (Screenshot Exact) */}
@@ -1589,30 +1914,63 @@ export function ChatView({
                 </button>
               </div>
 
-              {/* Right: Model dropdown, Mic, and Waveform Circle */}
+              {/* Right: Decoupled Role dropdown, Model dropdown (both direction="up"), Mic, and Waveform */}
               <div className="chat-bottom-right">
+                {/* 1. Decoupled Role Selector (Pops UPWARDS) */}
                 <DrawerSelect
                   size="sm"
-                  value={`${selectedModel}:::${selectedReasoning.startsWith("深度") ? "深度" : "轻度"}`}
+                  direction="up"
+                  value={selectedRoleId}
                   onChange={(val) => {
-                    if (val === "__switch_provider__") {
-                      setShowProviderModal(true);
-                      return;
-                    }
-                    const [m, r] = val.split(":::");
-                    if (m) setSelectedModel(m);
-                    if (r) setSelectedReasoning(r === "深度" ? "深度 (High)" : "快速 (Low)");
+                    setSelectedRoleId(val);
+                    const role = availableRoles.find((r) => r.id === val);
+                    showToast(`已切换角色设定至【${role?.roleName || "通用助手"}】`);
                   }}
-                  options={combinedModelOptions}
-                  customLabel={`${modelShortName} ${reasoningShort}`}
+                  options={availableRoles.map((r) => ({
+                    value: r.id,
+                    label: r.roleName,
+                    description: r.description,
+                    icon: <RoleIcon icon={r.icon} size={13} />,
+                  }))}
+                  customLabel={
+                    selectedRoleId === "role-general"
+                      ? "角色: 通用助手"
+                      : `角色: ${availableRoles.find((r) => r.id === selectedRoleId)?.roleName || "助手"}`
+                  }
                   triggerStyle={{
-                    border: "none",
-                    background: "transparent",
-                    padding: "4px 8px",
-                    fontSize: "12.5px",
-                    color: "#48484a",
+                    border: "1px solid #e5e5ea",
+                    background: "#fbfbfd",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    color: "#3a3a3c",
                     fontWeight: 500,
                   }}
+                />
+
+                {/* 2. Decoupled Model Engine & Reasoning Selector (Codex 2-stage Slider + Picker) */}
+                <CodexModelPopover
+                  selectedModel={selectedModel}
+                  selectedReasoning={selectedReasoning}
+                  activeProvider={activeProvider}
+                  onSelectModel={(model, providerId) => {
+                    setSelectedModel(model);
+                    if (providerId) {
+                      const p = getStoredProviders().find((item) => item.id === providerId);
+                      if (p) {
+                        setActiveProvider(p);
+                        setActiveProviderId(p.id);
+                        showToast(`已切换执行引擎与账号至【${p.name}】`);
+                      }
+                    } else {
+                      showToast(`已选择模型【${model}】`);
+                    }
+                  }}
+                  onSelectReasoning={(level) => {
+                    setSelectedReasoning(level);
+                  }}
+                  onOpenProviderModal={() => setShowProviderModal(true)}
+                  onOpenTokenModal={() => setShowTokenModal(true)}
                 />
 
                 <button
@@ -1643,6 +2001,32 @@ export function ChatView({
         </div>
       </div>
     </div>
+
+    {pendingDeleteSessionId && (
+      <div className="apple-modal-backdrop" onClick={() => setPendingDeleteSessionId(null)}>
+        <div className="apple-modal-card delete-confirm-card" onClick={(event) => event.stopPropagation()}>
+          <h3>删除对话</h3>
+          <p>
+            确定删除“{sessions.find((session) => session.id === pendingDeleteSessionId)?.title || "新会话"}”吗？此操作无法撤销。
+          </p>
+          <div className="modal-btn-row">
+            <button className="apple-btn-secondary" type="button" onClick={() => setPendingDeleteSessionId(null)}>
+              取消
+            </button>
+            <button
+              className="apple-btn-danger"
+              type="button"
+              onClick={() => {
+                handleDeleteSession(pendingDeleteSessionId);
+                setPendingDeleteSessionId(null);
+              }}
+            >
+              删除
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* Workspace Management Modal */}
     {showWorkspaceModal && (
@@ -1685,6 +2069,17 @@ export function ChatView({
         activeProvider={activeProvider}
         onSelectProvider={handleSelectProvider}
         onClose={() => setShowProviderModal(false)}
+      />
+    )}
+
+    {/* Token Activity & Account Balance Modal */}
+    {showTokenModal && (
+      <TokenUsageModal
+        onClose={() => setShowTokenModal(false)}
+        onOpenProviderModal={() => {
+          setShowTokenModal(false);
+          setShowProviderModal(true);
+        }}
       />
     )}
   </div>

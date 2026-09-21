@@ -8,6 +8,7 @@ import {
   setActiveEnv,
   setActiveServerId,
 } from "./workspaces";
+import { confirmDelete } from "./confirmDelete";
 import { IconServer, IconClose, IconPlus, IconTrash, IconCheck, IconZap } from "./icons";
 
 interface Props {
@@ -79,6 +80,8 @@ export function ServerModal({
 
   const handleDeleteServer = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const server = servers.find((item) => item.id === id);
+    if (!confirmDelete(`服务器“${server?.name || "未命名"}”`)) return;
     const updated = removeServer(id);
     setServers(updated);
     if (selectedServerId === id) {

@@ -1,6 +1,6 @@
 # 实施状态
 
-当前阶段：P6 进行中；P0/P4 真实接入仍等待账号与第二种 CLI。
+当前阶段：Gemini 分支成果已完整带入 `Codex` 分支，继续进行 P6/P8/P9 收口；P0/P4 真实账号验收仍未完成。
 
 已验证基础能力：P2 持久化与 mock 单步闭环、P3 独立 runner/调度/初版对账、P5 Git Worktree/Checkpoint/产物索引。现有测试仅证明各自覆盖的场景，尚不足以代表 P3/P5 全部可靠性验收完成。P1 的可启动骨架已通过，菜单栏、明确退出和 release 构建仍作为收尾项保留。
 
@@ -20,7 +20,25 @@
 - Review 按 Checkpoint 创建独立 detached 工作区，保留旧候选现场。SQLite migration v4 保留旧工作区/Checkpoint 引用，移除“同 generation 只能一个 Review”的限制；迁移外键检查失败会回滚。
 - 节点之间、prepared 阶段和等待审批时可取消；状态未知的执行不释放锁。Tauri 增加创建 mock 开发任务、读取开发状态、提交审批的业务命令，TypeScript 客户端类型同步。
 
-P6 尚缺：自动执行当前仅支持固定标准模板，需要统一通用图定义与执行路径，接入真实 adapter，补齐候选文件变化检测和故障恢复。App 后端命令已接通，React 创建/审批界面尚未完成；当前不将 P6 标记为完成。
+P6 尚缺：自动执行当前仅支持固定标准模板，需要统一通用图定义与执行路径，补齐候选文件变化检测和故障恢复。Gemini 分支已提供任务创建、运行详情、React Flow、Checkpoint/日志和审批界面，但真实 adapter 尚未通过计划中的账号隔离与 runner 生命周期验收；当前不将 P6 标记为完成。
+
+## Codex 分支接续
+
+- `Codex` 从 Gemini 最新提交创建，Gemini 的已提交历史和未提交界面/Token 统计修改均原样保留。
+- Gemini 新增的直接 CLI IPC 原先允许界面传入任意 executable、arguments、HOME 和终端命令，并使用绕过权限/沙箱参数。现已改为 provider 业务请求：Rust 解析固定二进制和账号 HOME、校验工作区与模型白名单，并强制 Codex `workspace-write`/自动审批审查和 agy sandbox。
+- 登录入口只接受三个声明的 agy provider；未知 provider、伪造模型和危险参数有永久回归测试。该聊天请求目前仍由 Tauri 进程等待 CLI 结果，尚未迁移到独立 runner，因此不能计入可靠执行验收。
+- “用量与余额”已移除静态 Token 日历、字符数换算、固定 31.7 亿累计值、虚构额度上限和 agy 100% 余额。Codex 数据改由 Rust 通过官方 `app-server` 的 `account/usage/read` 与 `account/rateLimits/read` 读取；无可信接口的 agy 账号明确显示不可用。
+- agy 1.2.7 已完成真实模型调用验证：`gemini-3.8-flash-low` 返回结构化 JSON 和精确的 input/output/thinking/cache/total Token。AgentFlow 现使用 agy 实际模型 ID、强制 JSON 输出，并把每次成功执行的精确用量写入 SQLite migration v6；用量页通过官方只读 `/usage` 展示 Gemini 与 Claude/GPT 两组真实的 5 小时和每周剩余百分比及重置时间。
+- “用量与余额”页已收敛为 Token 活动、CLI 账号剩余百分比和重置时间；打开页面立即读取，之后每 5 分钟自动更新，也可手动刷新。
+- 配额改为环形剩余比例展示。Codex 与 agy 独立降级：Codex 读取失败不再隐藏三个 agy 账号，刷新中保留上次成功数据。
+- Finder 启动时不再依赖 `PATH` 定位 agy，固定检查 `~/.local/bin` 和 Homebrew 路径。三个账号的官方 `/usage` 均已实测返回成功。
+- 用量页合并 React Strict Mode 产生的重复首次请求，并把 Codex/agy 配额读取移到 Rust 阻塞线程池，避免卡住桌面事件处理。agy 凭据不存在时直接返回错误，不启动可能弹出登录的 CLI 进程。
+- 用量页每次成功读取后保存最新快照。下次进入页面先显示上次的配额和 Token 活动，再在后台静默更新；agy 的 Token 活动原始记录仍持久化在 SQLite。
+- 用量快照已从 WebView `localStorage` 迁移到 App 数据目录的 `cli-token-stats.json`，重启和重新打包后仍可先显示。Token 活动只保留每日视图；四个 CLI 账号在宽窗口下使用单行四列紧凑布局。
+- Agent 角色库只管理角色定义和预设 Prompt，不再保存或推荐模型与推理深度；任务中切换角色不会覆盖已选模型参数。
+- 角色、对话、定时任务、长期目标、规划项目、工作区、服务器和工作流节点的删除入口均增加二次确认。对话历史改为延迟 200 ms 合并写入本地存储，消息滚动取消重复平滑动画，减少连续点击和输出时的主线卡顿。
+- 主侧栏增加“工作流”编辑入口：支持拖拽连线、节点/连线删除确认、按依赖自动拓扑排列与画布位置保存。图变更同步回同一份 `WorkflowDefinition`，发布仍由 Rust 验证器拦截非法图。任务详情画布改为不可编辑的执行快照，避免前端临时节点与真实执行图脱节。
+- 三个 agy 账号均已完成独立登录与真实模型调用验证。账号 2、3 使用各自隔离 HOME，并在 macOS 钥匙串不可用时由 agy 回退到各自的 `antigravity-oauth-token` 文件；检测逻辑只检查凭据文件存在性，不读取 Token 内容，也不会把账号 1 的凭据注入其他账号。
 
 ## P5 已实现
 
@@ -54,6 +72,7 @@ P6 尚缺：自动执行当前仅支持固定标准模板，需要统一通用�
 - `scripts/verify-runner.sh target/debug/agentflow-runner target/debug/agentflow-mock-cli`：通过父进程退出、进程组取消、陈旧 token、非零退出、无效 JSON 和双流大日志。
 - `cargo run -p agentflow-core --example verify_scheduler -- <runner> <mock-cli>`：通过三账号并行、同账号串行、取消、失败和调度 host `SIGKILL` 后结果补记。
 - `npm run tauri build -- --debug --bundles app`：通过；`Contents/MacOS` 包含 `agentflow-app`、`agentflow-runner` 和 `agentflow-mock-cli`。
+- 本轮 `cargo test --workspace --offline` 通过（App 4 项、Core 33 项、mock CLI 4 项），`npm run build` 与 debug `.app` 打包通过。已直接验证本机 Codex 官方接口返回 Token 汇总、每日分桶、5 小时/7 天限额、重置时间和 Credits 字段，并验证 agy 真实 JSON Token 用量。
 - 新 App 通过 LaunchServices `open` 启动，SQLite 和调度线程均正常存活。验证时 macOS 处于锁屏，本轮无法完成可视窗口点击；上一版 P2 已有界面点击证据。
 - `cargo clippy --workspace --all-targets -- -D warnings`：未执行，当前 Rust toolchain 未安装 Clippy component。
 
@@ -69,4 +88,4 @@ P6 尚缺：自动执行当前仅支持固定标准模板，需要统一通用�
 - 缺少三套同类测试账号和第二种 CLI 输入，P0/P4 真实接入退出条件未满足，但不阻塞 P5/P6 的 mock 实现。
 - Rust 1.97/macOS 27 下 release 编译 Tauri 依赖时，`zerofrom` 无法载入 `zerofrom_derive` proc-macro（`E0463`）；debug workspace、runner 和 App 均可构建运行。
 
-下一步：完成 React 中的 mock 工作流创建/进度/审批入口，并继续补齐通用图执行、候选版本变化与恢复路径；真实账号验收仍独立保留。
+下一步：把受限聊天 CLI 调用迁移到独立 runner 与持久化 Attempt，随后统一通用图执行与任务画布定义；真实账号验收仍独立保留。

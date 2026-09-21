@@ -30,7 +30,7 @@ export function TasksView({ runs, onSelectRun, onRefresh, busy }: Props) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [taskMode, setTaskMode] = useState<"development" | "single">("development");
   const [title, setTitle] = useState("自动化重构与测试修复");
-  const [description, setDescription] = useState("独立 runner 执行 mock Agent，闭环完成测试与 Review 返工。");
+  const [description, setDescription] = useState("原生 runner 驱动 CLI Agent，闭环完成开发、测试与 Review。");
   const [acceptanceCriteria, setAcceptanceCriteria] = useState("测试通过\nReview 批准\nCheckpoint 留痕");
   const [repositoryPath, setRepositoryPath] = useState("");
   const [scenario, setScenario] = useState<"pass" | "test_then_review_retry">("test_then_review_retry");
@@ -184,7 +184,7 @@ export function TasksView({ runs, onSelectRun, onRefresh, busy }: Props) {
                   onChange={(e) => setTaskMode(e.target.value as typeof taskMode)}
                 >
                   <option value="development">开发工作流（包含分析、开发、测试、Review 与审批）</option>
-                  <option value="single">单步独立任务（纯 Mock Agent 单步派发）</option>
+                  <option value="single">单步独立任务（CLI Agent 单步派发）</option>
                 </select>
               </label>
 

@@ -16,6 +16,8 @@
 
 React 只调用显式注册的 Tauri 业务命令。当前开放应用状态、创建 mock 任务、运行查询、取消和工作流验证，没有向 WebView 暴露任意 shell 或任意文件访问入口。
 
+聊天 CLI 同样使用业务请求边界：界面只传 provider ID、prompt、模型、推理档位与工作区。Rust 选择已知二进制和账号 HOME，校验 canonical 工作区与模型白名单，并添加固定沙箱参数。禁止界面传入 executable、参数数组、任意终端命令或绕过权限/沙箱开关。
+
 工作流定义由 Rust Core 持有并验证，React Flow 后续只编辑和展示同一份定义。Tauri Events 只用于刷新提示，不能代替数据库状态与事件记录。
 
 ## D-003：runner 协议
@@ -33,6 +35,12 @@ React 只调用显式注册的 Tauri 业务命令。当前开放应用状态、�
 ## D-004：真实 CLI 接入
 
 当前只发现 Codex CLI。第二种 CLI、三套同类账号和独立 profile 尚未提供，因此先保留 adapter 边界，不选择或伪造第二供应商。真实账号验证仍是 P0/P4 和最终验收的必需项。
+
+## D-004A：用量统计真实性边界
+
+Codex 的账户 Token 汇总和每日分桶只读取官方 `codex app-server` 的 `account/usage/read`，额度窗口、重置时间与 Credits 只读取 `account/rateLimits/read`。不以字符数近似 Token，不从会话记录反推账户配额，不设置猜测性的总额度。供应商未提供可验证接口时显示“不可用”，不得用 0 或 100% 冒充真实余额。官方接口未提供逐次 Prompt/Completion 明细，因此界面不展示伪造的最近执行明细。
+
+agy 通过 `--output-format json` 返回每次执行的 input、output、thinking、cache read 和 total Token。Rust 只在 `status=SUCCESS` 且 JSON schema 有效时把原始数值写入 AgentFlow SQLite；失败或格式变化不能生成统计记录。5 小时和每周剩余百分比及重置时间只读取 agy 官方只读 `/usage` 的结构化 `command.data.groups[].buckets[]`，按 Gemini 与 Claude/GPT 两个共享配额组展示，不从 Token 数反推。
 
 ## D-005：当前 macOS 构建能力
 

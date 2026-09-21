@@ -1,13 +1,7 @@
-import { detectLocalCliAgents, runCliAgent } from "./api";
+import { detectLocalCliAgents, runCliAgent, openCliLogin } from "./api";
+import { getActiveSkillsPrompt } from "./skills";
 
-export type ProviderType =
-  | "local_ollama"
-  | "local_lmstudio"
-  | "local_cli"
-  | "cloud_anthropic"
-  | "cloud_openai"
-  | "cloud_deepseek"
-  | "custom_api";
+export type ProviderType = "local_cli" | "custom_api";
 
 export interface AgentProviderConfig {
   id: string;
@@ -16,9 +10,13 @@ export interface AgentProviderConfig {
   baseUrl: string;
   apiKey?: string;
   isLocal: boolean;
-  detected: boolean; // Auto-detected status
+  detected: boolean;
   statusMessage?: string;
   models: string[];
+  customHome?: string;
+  accountEmail?: string;
+  isAuthenticated?: boolean;
+  loginCommand?: string;
 }
 
 export interface UnifiedMessage {
@@ -31,7 +29,7 @@ export interface UnifiedChatRequest {
   model: string;
   messages: UnifiedMessage[];
   temperature?: number;
-  reasoningEffort?: "快速" | "平衡" | "深度";
+  reasoningEffort?: "快速" | "平衡" | "深度" | "轻度" | "标准" | "强劲" | "极致";
   workspacePath?: string;
 }
 
@@ -43,22 +41,77 @@ export interface UnifiedChatResponse {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+    thinkingTokens?: number;
+    cacheReadTokens?: number;
   };
 }
 
-const PROVIDERS_STORAGE_KEY = "agentflow_agent_providers_v1";
-const ACTIVE_PROVIDER_STORAGE_KEY = "agentflow_active_provider_id_v1";
+const PROVIDERS_STORAGE_KEY = "agentflow_agent_providers_v4_pure_cli";
+const ACTIVE_PROVIDER_STORAGE_KEY = "agentflow_active_provider_id_v4";
+
+export const AGY_MODELS = [
+  "gemini-3.8-flash-high",
+  "gemini-3.8-flash-medium",
+  "gemini-3.8-flash-low",
+  "gemini-3.7-flash-high",
+  "gemini-3.7-flash-medium",
+  "gemini-3.7-flash-low",
+  "gemini-3.6-flash-high",
+  "gemini-3.6-flash-medium",
+  "gemini-3.6-flash-low",
+  "gemini-3.1-pro-high",
+  "gemini-3.1-pro-low",
+  "claude-sonnet-4-6",
+  "claude-opus-4-6-thinking",
+  "gpt-oss-120b-medium",
+];
+
+export const CODEX_MODELS = [
+  "GPT-6 Astra",
+  "GPT-5.6 Sol",
+  "GPT-5.6 Terra",
+  "GPT-5.6 Luna",
+  "GPT-5.5",
+];
 
 export const DEFAULT_PROVIDERS: AgentProviderConfig[] = [
   {
-    id: "provider-cli-agy",
-    name: "Google Antigravity (agy CLI)",
+    id: "provider-cli-agy-1",
+    name: "Google agy (账号 1 - 主账号)",
     type: "local_cli",
     baseUrl: "/Users/yida/.local/bin/agy",
     isLocal: true,
     detected: true,
-    statusMessage: "本地 CLI 原生执行器 · 支持自主工具调用与工作区任务",
-    models: ["agy (默认模式)", "agy (Gemini 2.0)", "agy (深度思考)"],
+    statusMessage: "本地主账号环境 · maureentyler18@gmail.com",
+    models: AGY_MODELS,
+    customHome: undefined,
+    isAuthenticated: true,
+  },
+  {
+    id: "provider-cli-agy-2",
+    name: "Google agy (账号 2)",
+    type: "local_cli",
+    baseUrl: "/Users/yida/.local/bin/agy",
+    isLocal: true,
+    detected: true,
+    statusMessage: "独立隔离环境 · ~/.agy-accounts/account2",
+    models: AGY_MODELS,
+    customHome: "~/.agy-accounts/account2",
+    loginCommand: "HOME=~/.agy-accounts/account2 agy",
+    isAuthenticated: false,
+  },
+  {
+    id: "provider-cli-agy-3",
+    name: "Google agy (账号 3)",
+    type: "local_cli",
+    baseUrl: "/Users/yida/.local/bin/agy",
+    isLocal: true,
+    detected: true,
+    statusMessage: "独立隔离环境 · ~/.agy-accounts/account3",
+    models: AGY_MODELS,
+    customHome: "~/.agy-accounts/account3",
+    loginCommand: "HOME=~/.agy-accounts/account3 agy",
+    isAuthenticated: false,
   },
   {
     id: "provider-cli-codex",
@@ -68,60 +121,9 @@ export const DEFAULT_PROVIDERS: AgentProviderConfig[] = [
     isLocal: true,
     detected: true,
     statusMessage: "本地 Codex 引擎 · 自动化代码编写与工程重构",
-    models: ["codex exec (全权限模式)", "codex (默认)"],
-  },
-  {
-    id: "provider-claude",
-    name: "Anthropic Claude (官方 API)",
-    type: "cloud_anthropic",
-    baseUrl: "https://api.anthropic.com/v1",
-    apiKey: "",
-    isLocal: false,
-    detected: false,
-    statusMessage: "云端直连 · 擅长长上下文与架构代码",
-    models: ["Claude 3.5 Sonnet", "Claude 3.5 Haiku", "Claude 3 Opus"],
-  },
-  {
-    id: "provider-openai",
-    name: "OpenAI (官方 API)",
-    type: "cloud_openai",
-    baseUrl: "https://api.openai.com/v1",
-    apiKey: "",
-    isLocal: false,
-    detected: false,
-    statusMessage: "云端直连 · 全能多模态与通用推理",
-    models: ["GPT-4o", "GPT-4o-mini", "o1-preview", "o1-mini"],
-  },
-  {
-    id: "provider-deepseek",
-    name: "DeepSeek (官方 API)",
-    type: "cloud_deepseek",
-    baseUrl: "https://api.deepseek.com/v1",
-    apiKey: "",
-    isLocal: false,
-    detected: false,
-    statusMessage: "高性价比代码与长链推理",
-    models: ["DeepSeek V3", "DeepSeek R1"],
-  },
-  {
-    id: "provider-ollama",
-    name: "Ollama (本地端点)",
-    type: "local_ollama",
-    baseUrl: "http://localhost:11434",
-    isLocal: true,
-    detected: false,
-    statusMessage: "本地独立运行 · 免 API Key · 数据完全脱敏",
-    models: ["llama3.3", "qwen2.5-coder", "deepseek-r1:8b"],
-  },
-  {
-    id: "provider-lmstudio",
-    name: "LM Studio (本地端点)",
-    type: "local_lmstudio",
-    baseUrl: "http://localhost:1234/v1",
-    isLocal: true,
-    detected: false,
-    statusMessage: "本地 OpenAI 兼容服务器",
-    models: ["local-model"],
+    models: CODEX_MODELS,
+    customHome: undefined,
+    isAuthenticated: true,
   },
 ];
 
@@ -135,18 +137,25 @@ export function getStoredProviders(): AgentProviderConfig[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_PROVIDERS;
 
-    // Ensure newly introduced CLI providers are merged in
+    // Filter out any legacy non-CLI providers and make sure all default CLI providers are present
+    const validCliProviders = parsed.filter((p) => p.type === "local_cli");
     let changed = false;
+
     for (const def of DEFAULT_PROVIDERS) {
-      if (!parsed.some((p) => p.id === def.id)) {
-        parsed.unshift(def);
+      const existing = validCliProviders.find((p) => p.id === def.id);
+      if (!existing) {
+        validCliProviders.push(def);
+        changed = true;
+      } else if (JSON.stringify(existing.models) !== JSON.stringify(def.models)) {
+        existing.models = def.models;
         changed = true;
       }
     }
-    if (changed) {
-      localStorage.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify(parsed));
+
+    if (changed || validCliProviders.length !== parsed.length) {
+      localStorage.setItem(PROVIDERS_STORAGE_KEY, JSON.stringify(validCliProviders));
     }
-    return parsed;
+    return validCliProviders;
   } catch {
     return DEFAULT_PROVIDERS;
   }
@@ -168,164 +177,145 @@ export function setActiveProviderId(id: string): void {
 }
 
 /**
- * 自动检测本地运行环境 (Auto-Detect Local Services)
- * 检测本地 CLI Agent (agy / codex) 以及 Ollama (11434) 和 LM Studio (1234) 端点是否在线
+ * 自动检测本地运行环境 (Auto-Detect Local CLI Agents & Accounts)
+ * 扫描本地 3 个 Google agy 账号环境与 OpenAI Codex CLI 状态
  */
 export async function detectLocalEndpoints(): Promise<{
-  ollamaOnline: boolean;
-  lmStudioOnline: boolean;
-  ollamaModels: string[];
   cliAgyAvailable: boolean;
   cliCodexAvailable: boolean;
+  accounts: { id: string; name: string; authenticated: boolean; email?: string }[];
 }> {
-  let ollamaOnline = false;
-  let lmStudioOnline = false;
-  const ollamaModels: string[] = [];
   let cliAgyAvailable = false;
   let cliCodexAvailable = false;
-  let agyPath: string | null = null;
-  let codexPath: string | null = null;
-  let agyVersion: string | null = null;
-  let codexVersion: string | null = null;
+  const accounts: { id: string; name: string; authenticated: boolean; email?: string }[] = [];
 
-  // 1. Detect Local CLI agents via Tauri invoke
   try {
     const detectedClis = await detectLocalCliAgents();
-    const agy = detectedClis.find((c) => c.id === "agy");
-    if (agy && agy.available) {
-      cliAgyAvailable = true;
-      agyPath = agy.executablePath;
-      agyVersion = agy.version;
-    }
-    const codex = detectedClis.find((c) => c.id === "codex");
-    if (codex && codex.available) {
-      cliCodexAvailable = true;
-      codexPath = codex.executablePath;
-      codexVersion = codex.version;
+    const currentList = getStoredProviders();
+    let changed = false;
+
+    const updated = currentList.map((p) => {
+      if (p.id === "provider-cli-agy-1") {
+        const found = detectedClis.find((c) => c.id === "agy-1");
+        if (found) {
+          cliAgyAvailable = found.available;
+          changed = true;
+          accounts.push({
+            id: p.id,
+            name: p.name,
+            authenticated: found.isAuthenticated,
+            email: found.accountEmail || undefined,
+          });
+          return {
+            ...p,
+            detected: found.available,
+            baseUrl: found.executablePath || p.baseUrl,
+            accountEmail: found.accountEmail || undefined,
+            isAuthenticated: found.isAuthenticated,
+            statusMessage: found.accountEmail
+              ? `已授权: ${found.accountEmail}`
+              : found.isAuthenticated
+              ? "已授权（本地文件凭据）"
+              : found.available
+              ? "已就绪 (系统默认主账号)"
+              : "未检测到本地 agy 命令",
+          };
+        }
+      }
+      if (p.id === "provider-cli-agy-2") {
+        const found = detectedClis.find((c) => c.id === "agy-2");
+        if (found) {
+          changed = true;
+          accounts.push({
+            id: p.id,
+            name: p.name,
+            authenticated: found.isAuthenticated,
+            email: found.accountEmail || undefined,
+          });
+          return {
+            ...p,
+            detected: found.available,
+            baseUrl: found.executablePath || p.baseUrl,
+            accountEmail: found.accountEmail || undefined,
+            isAuthenticated: found.isAuthenticated,
+            statusMessage: found.accountEmail
+              ? `已授权: ${found.accountEmail}`
+              : found.isAuthenticated
+              ? "已授权（隔离文件凭据）"
+              : "未登录 · 需在终端登录验证",
+          };
+        }
+      }
+      if (p.id === "provider-cli-agy-3") {
+        const found = detectedClis.find((c) => c.id === "agy-3");
+        if (found) {
+          changed = true;
+          accounts.push({
+            id: p.id,
+            name: p.name,
+            authenticated: found.isAuthenticated,
+            email: found.accountEmail || undefined,
+          });
+          return {
+            ...p,
+            detected: found.available,
+            baseUrl: found.executablePath || p.baseUrl,
+            accountEmail: found.accountEmail || undefined,
+            isAuthenticated: found.isAuthenticated,
+            statusMessage: found.accountEmail
+              ? `已授权: ${found.accountEmail}`
+              : found.isAuthenticated
+              ? "已授权（隔离文件凭据）"
+              : "未登录 · 需在终端登录验证",
+          };
+        }
+      }
+      if (p.id === "provider-cli-codex") {
+        const found = detectedClis.find((c) => c.id === "codex");
+        if (found) {
+          cliCodexAvailable = found.available;
+          changed = true;
+          accounts.push({
+            id: p.id,
+            name: p.name,
+            authenticated: found.available,
+          });
+          return {
+            ...p,
+            detected: found.available,
+            baseUrl: found.executablePath || p.baseUrl,
+            isAuthenticated: found.available,
+            statusMessage: found.version
+              ? `已就绪 (${found.version}) · 使用工作区沙箱执行`
+              : "未检测到本地 codex 命令",
+          };
+        }
+      }
+      return p;
+    });
+
+    if (changed) {
+      saveProviders(updated);
     }
   } catch (err) {
-    console.warn("detectLocalCliAgents failed:", err);
+    console.warn("detectLocalEndpoints failed:", err);
   }
 
-  // 2. Ping Ollama tags
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 600);
-    const res = await fetch("http://localhost:11434/api/tags", {
-      signal: controller.signal,
-      method: "GET",
-    });
-    clearTimeout(timer);
-    if (res.ok) {
-      ollamaOnline = true;
-      const data = await res.json();
-      if (Array.isArray(data.models)) {
-        ollamaModels.push(...data.models.map((m: { name: string }) => m.name));
-      }
-    }
-  } catch {
-    ollamaOnline = false;
-  }
+  return { cliAgyAvailable, cliCodexAvailable, accounts };
+}
 
-  // 3. Ping LM Studio v1/models
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 600);
-    const res = await fetch("http://localhost:1234/v1/models", {
-      signal: controller.signal,
-      method: "GET",
-    });
-    clearTimeout(timer);
-    if (res.ok) {
-      lmStudioOnline = true;
-    }
-  } catch {
-    lmStudioOnline = false;
-  }
-
-  // Update stored providers with detected status
-  const currentList = getStoredProviders();
-  let changed = false;
-  const updated = currentList.map((p) => {
-    if (p.id === "provider-cli-agy") {
-      changed = true;
-      return {
-        ...p,
-        detected: cliAgyAvailable,
-        baseUrl: agyPath || p.baseUrl,
-        statusMessage: cliAgyAvailable
-          ? `已就绪 (${agyPath || "/Users/yida/.local/bin/agy"}) · 支持 -p 无交互执行`
-          : "未检测到本地 agy 命令 (检查 PATH 或安装路径)",
-      };
-    }
-    if (p.id === "provider-cli-codex") {
-      changed = true;
-      return {
-        ...p,
-        detected: cliCodexAvailable,
-        baseUrl: codexPath || p.baseUrl,
-        statusMessage: cliCodexAvailable
-          ? `已就绪 (${codexVersion || "codex-cli"}) · 支持 exec 自动化运行`
-          : "未检测到本地 codex 命令 (检查 PATH 或安装路径)",
-      };
-    }
-    if (p.type === "local_ollama") {
-      changed = true;
-      return {
-        ...p,
-        detected: ollamaOnline,
-        models: ollamaModels.length > 0 ? ollamaModels : p.models,
-        statusMessage: ollamaOnline
-          ? `已自动检测到在线 (模型数: ${ollamaModels.length || 3})`
-          : "未检测到运行进程 (可启动 ollama serve)",
-      };
-    }
-    if (p.type === "local_lmstudio") {
-      changed = true;
-      return {
-        ...p,
-        detected: lmStudioOnline,
-        statusMessage: lmStudioOnline
-          ? "已自动检测到在线 (端口 1234)"
-          : "未检测到运行进程 (可在 LM Studio 开启本地服务)",
-      };
-    }
-    return p;
-  });
-
-  if (changed) {
-    saveProviders(updated);
-  }
-
-  return { ollamaOnline, lmStudioOnline, ollamaModels, cliAgyAvailable, cliCodexAvailable };
+/**
+ * 唤起系统终端执行指定 agy 账号登录
+ */
+export async function launchAgyLoginInTerminal(providerId: string) {
+  await openCliLogin(providerId);
 }
 
 /**
  * 统一 Adapter 核心适配类
- * 负责标准化输出与转发请求
+ * 仅执行真实可执行的 CLI Agent (agy / codex)
  */
 export class UnifiedAgentAdapter {
-  static formatMessagesForOpenAI(messages: UnifiedMessage[]) {
-    return messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
-  }
-
-  static formatMessagesForAnthropic(messages: UnifiedMessage[]) {
-    const systemMsg = messages.find((m) => m.role === "system")?.content || "";
-    const conversation = messages
-      .filter((m) => m.role !== "system")
-      .map((m) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.content,
-      }));
-    return { system: systemMsg, messages: conversation };
-  }
-
-  /**
-   * 统一执行调用抽象方法
-   */
   static async execute(req: UnifiedChatRequest): Promise<UnifiedChatResponse> {
     const providers = getStoredProviders();
     const provider = providers.find((p) => p.id === req.providerId) || providers[0];
@@ -333,27 +323,24 @@ export class UnifiedAgentAdapter {
     // Handle Local CLI Agent execution (agy or codex)
     if (provider.type === "local_cli") {
       const userPrompt = req.messages.filter((m) => m.role === "user").pop()?.content || "";
-      let program = provider.baseUrl || "agy";
-      let args: string[] = [];
-
-      if (provider.id.includes("agy") || req.model.toLowerCase().includes("agy")) {
-        program = provider.baseUrl || "/Users/yida/.local/bin/agy";
-        args = ["-p", userPrompt, "--dangerously-skip-permissions"];
-        if (req.reasoningEffort === "深度") {
-          args.push("--effort", "high");
-        }
-      } else if (provider.id.includes("codex") || req.model.toLowerCase().includes("codex")) {
-        program = provider.baseUrl || "/Users/yida/.local/bin/codex";
-        args = ["exec", userPrompt, "--dangerously-bypass-approvals-and-sandbox"];
-        if (req.workspacePath) {
-          args.push("-C", req.workspacePath);
-        }
+      if (provider.id.includes("agy") || req.model.toLowerCase().includes("gemini") || req.model.toLowerCase().includes("claude") || req.model.toLowerCase().includes("agy")) {
+        // The Rust core selects the executable, account HOME, sandbox and allowed arguments.
+      } else if (provider.id.includes("codex") || req.model.toLowerCase().includes("gpt") || req.model.toLowerCase().includes("codex")) {
       } else {
-        args = [userPrompt];
+        return { content: `[CLI 执行错误] 不支持的 provider：${provider.id}`, model: req.model, providerName: provider.name };
       }
 
       try {
-        const result = await runCliAgent(program, args, req.workspacePath);
+        if (!req.workspacePath) throw new Error("CLI 执行必须绑定工作区");
+        const skillsPrompt = getActiveSkillsPrompt();
+        const finalPrompt = skillsPrompt ? `${userPrompt}\n${skillsPrompt}` : userPrompt;
+        const result = await runCliAgent({
+          providerId: provider.id,
+          prompt: finalPrompt,
+          model: req.model,
+          reasoningEffort: req.reasoningEffort || "平衡",
+          workingDirectory: req.workspacePath,
+        });
         const output =
           result.stdout.trim() ||
           result.stderr.trim() ||
@@ -363,31 +350,29 @@ export class UnifiedAgentAdapter {
           content: output,
           model: req.model,
           providerName: provider.name,
-          usage: {
-            promptTokens: userPrompt.length,
-            completionTokens: output.length,
-            totalTokens: userPrompt.length + output.length,
-          },
+          usage: result.usage
+            ? {
+                promptTokens: result.usage.inputTokens,
+                completionTokens: result.usage.outputTokens,
+                thinkingTokens: result.usage.thinkingTokens,
+                cacheReadTokens: result.usage.cacheReadTokens,
+                totalTokens: result.usage.totalTokens,
+              }
+            : undefined,
         };
       } catch (err) {
         return {
-          content: `[CLI 执行错误] 无法拉起命令 ${program}: ${String(err)}`,
+          content: `[CLI 执行错误] 无法启动受限 provider：${String(err)}`,
           model: req.model,
           providerName: provider.name,
         };
       }
     }
 
-    // Standard simulated response for cloud or other endpoints without keys
     return {
-      content: `[Unified Adapter: ${provider.name}] 已接收消息，执行模型：${req.model} (${req.reasoningEffort || "标准"})`,
+      content: `[CLI 原生模式] 未知的本地 CLI 执行器：${provider.name}`,
       model: req.model,
       providerName: provider.name,
-      usage: {
-        promptTokens: 128,
-        completionTokens: 356,
-        totalTokens: 484,
-      },
     };
   }
 }
