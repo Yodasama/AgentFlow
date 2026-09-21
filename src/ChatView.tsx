@@ -730,18 +730,45 @@ export function ChatView({
             const durationMs = Date.now() - startTime;
             const fullCmd = `${agentName} · 受限业务命令 · workspace=${activeWorkspace.path}`;
 
-            const hasErr = res.content.startsWith("[CLI 执行错误]") || res.content.includes("CLI 退出码异常");
+            let displayContent = res.content;
+            let isAuthError = false;
+
+            // Detect raw JSON error response if any
+            if (displayContent.includes('"status":"ERROR"') || displayContent.includes('"error":')) {
+              try {
+                const parsed = JSON.parse(displayContent);
+                if (parsed.error) {
+                  if (
+                    parsed.error.includes("authentication failed") ||
+                    parsed.error.includes("timed out") ||
+                    parsed.error.includes("not logged in")
+                  ) {
+                    isAuthError = true;
+                    displayContent = `[CLI 执行错误] 账号认证失败: ${parsed.error}\n该账号登录凭据已失效或未授权。请在“设置 -> Agent 接入管理”中通过终端重新登录该账号。`;
+                  } else {
+                    displayContent = `[CLI 执行错误] ${parsed.error}`;
+                  }
+                }
+              } catch {}
+            }
+
+            const hasErr =
+              (res.exitCode !== undefined && res.exitCode !== 0) ||
+              displayContent.startsWith("[CLI 执行错误]") ||
+              displayContent.includes("CLI 退出码异常") ||
+              isAuthError;
 
             const executionCard: CliExecutionCardData = {
               agentName,
               command: fullCmd,
               workspacePath: activeWorkspace.path,
-              exitCode: hasErr ? 1 : 0,
+              exitCode: hasErr ? (res.exitCode || 1) : 0,
               success: !hasErr,
-              stdout: res.content,
+              stdout: displayContent,
               stderr: "",
               durationMs,
             };
+
 
             const aiMsg: ChatMessage = {
               id: `msg-ai-${Date.now()}`,

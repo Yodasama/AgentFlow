@@ -666,11 +666,18 @@ pub struct CliTokenUsage {
 
 #[derive(Deserialize)]
 struct AgyCliJsonResult {
+    #[serde(default)]
     conversation_id: String,
+    #[serde(default)]
     status: String,
+    #[serde(default)]
     response: String,
-    usage: CliTokenUsage,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    usage: Option<CliTokenUsage>,
 }
+
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -778,34 +785,60 @@ async fn run_cli_agent(
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-        if provider_id.starts_with("provider-cli-agy-") && output.status.success() {
-            let parsed: AgyCliJsonResult = serde_json::from_str(&stdout)
-                .map_err(|error| format!("agy 未返回预期的结构化结果: {error}"))?;
-            if parsed.status != "SUCCESS" {
-                return Err(format!("agy 执行状态异常: {}", parsed.status));
+        if provider_id.starts_with("provider-cli-agy-") {
+            if let Ok(parsed) = serde_json::from_str::<AgyCliJsonResult>(&stdout) {
+                if parsed.status == "SUCCESS" {
+                    if let Some(usage) = &parsed.usage {
+                        let _ = storage
+                            .lock()
+                            .map_err(|_| "database mutex is poisoned".to_owned())
+                            .and_then(|guard| {
+                                guard.record_cli_usage(&CliUsageRecord {
+                                    provider_id: provider_id.clone(),
+                                    model: model.clone(),
+                                    input_tokens: usage.input_tokens,
+                                    output_tokens: usage.output_tokens,
+                                    thinking_tokens: usage.thinking_tokens,
+                                    cache_read_tokens: usage.cache_read_tokens,
+                                    total_tokens: usage.total_tokens,
+                                    created_at: chrono::Utc::now().to_rfc3339(),
+                                })
+                                .map_err(|error| format!("保存 agy Token 用量失败: {error}"))
+                            });
+                    }
+                    return Ok(CliAgentExecutionResult {
+                        success: true,
+                        exit_code: output.status.code(),
+                        stdout: parsed.response,
+                        stderr,
+                        conversation_id: Some(parsed.conversation_id),
+                        usage: parsed.usage,
+                    });
+                } else {
+                    let err_detail = parsed
+                        .error
+                        .filter(|e| !e.is_empty())
+                        .unwrap_or(parsed.status);
+                    let friendly_msg = if err_detail.contains("authentication failed")
+                        || err_detail.contains("timed out")
+                        || err_detail.contains("not logged in")
+                    {
+                        format!(
+                            "[CLI 执行错误] 账号认证失败 ({err_detail})。\n该账号登录凭据已过期或未授权，请在设置中通过【终端登录】重新授权该账号。"
+                        )
+                    } else {
+                        format!("[CLI 执行错误] agy 执行异常: {err_detail}")
+                    };
+                    return Ok(CliAgentExecutionResult {
+                        success: false,
+                        exit_code: Some(1),
+                        stdout: friendly_msg,
+                        stderr,
+                        conversation_id: None,
+                        usage: None,
+                    });
+                }
             }
-            storage
-                .lock()
-                .map_err(|_| "database mutex is poisoned".to_owned())?
-                .record_cli_usage(&CliUsageRecord {
-                    provider_id,
-                    model,
-                    input_tokens: parsed.usage.input_tokens,
-                    output_tokens: parsed.usage.output_tokens,
-                    thinking_tokens: parsed.usage.thinking_tokens,
-                    cache_read_tokens: parsed.usage.cache_read_tokens,
-                    total_tokens: parsed.usage.total_tokens,
-                    created_at: chrono::Utc::now().to_rfc3339(),
-                })
-                .map_err(|error| format!("保存 agy Token 用量失败: {error}"))?;
-            return Ok(CliAgentExecutionResult {
-                success: true,
-                exit_code: output.status.code(),
-                stdout: parsed.response,
-                stderr,
-                conversation_id: Some(parsed.conversation_id),
-                usage: Some(parsed.usage),
-            });
         }
 
         Ok(CliAgentExecutionResult {
@@ -875,7 +908,7 @@ fn cli_arguments(
         ) {
             return Err("不支持的 CLI provider".to_owned());
         }
-        let model = allowed_agy_model(model)?;
+        let model = allowed_agy_model(model);
         let effort = match reasoning_effort {
             "深度" | "强劲" | "极致" => "high",
             "轻度" | "快速" => "low",
@@ -935,7 +968,7 @@ fn allowed_codex_model(model: &str) -> Result<&'static str, String> {
     }
 }
 
-fn allowed_agy_model(model: &str) -> Result<&str, String> {
+fn allowed_agy_model(model: &str) -> &'static str {
     const MODELS: &[&str] = &[
         "gemini-3.8-flash-high",
         "gemini-3.8-flash-medium",
@@ -956,7 +989,7 @@ fn allowed_agy_model(model: &str) -> Result<&str, String> {
         .iter()
         .copied()
         .find(|candidate| *candidate == model)
-        .ok_or_else(|| "不支持的 agy 模型".to_owned())
+        .unwrap_or("gemini-3.8-flash-high")
 }
 
 fn shell_quote(path: &std::path::Path) -> String {
@@ -1765,7 +1798,7 @@ mod desktop_command_tests {
     #[test]
     fn model_allowlists_reject_arbitrary_cli_flags() {
         assert!(allowed_codex_model("--danger-full-access").is_err());
-        assert!(allowed_agy_model("--dangerously-skip-permissions").is_err());
+        assert_eq!(allowed_agy_model("--dangerously-skip-permissions"), "gemini-3.8-flash-high");
     }
 
     #[test]
@@ -1809,7 +1842,7 @@ mod desktop_command_tests {
         }))
         .unwrap();
         assert_eq!(result.response, "OK\n");
-        assert_eq!(result.usage.total_tokens, 13_397);
+        assert_eq!(result.usage.as_ref().unwrap().total_tokens, 13_397);
     }
 
     #[test]

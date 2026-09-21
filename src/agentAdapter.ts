@@ -37,6 +37,7 @@ export interface UnifiedChatResponse {
   content: string;
   model: string;
   providerName: string;
+  exitCode?: number;
   usage?: {
     promptTokens: number;
     completionTokens: number;
@@ -45,6 +46,7 @@ export interface UnifiedChatResponse {
     cacheReadTokens?: number;
   };
 }
+
 
 const PROVIDERS_STORAGE_KEY = "agentflow_agent_providers_v4_pure_cli";
 const ACTIVE_PROVIDER_STORAGE_KEY = "agentflow_active_provider_id_v4";
